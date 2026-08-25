@@ -1,15 +1,22 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, ForeignKey
+from typing import Optional
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, Boolean, ForeignKey  
+from sqlalchemy.orm import Mapped, mapped_column, relationship 
 from app.database import Base
+from datetime import datetime, timezone 
 
 class UserRole(Base):
-    __tablename__ = "user_roles"
+    __tablename__ = "st_userroles"
     __table_args__ = {"schema": "smarttutor"}
     role_id = Column(Integer, primary_key=True)
     role_name = Column(String(100), unique=True, nullable=False)
-
+    created_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
+    modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
 
 class User(Base):
-    __tablename__ = "users"
+    __tablename__ = "st_users"
     __table_args__ = {"schema": "smarttutor"}
     user_id = Column(Integer, primary_key=True)
     username = Column(String(100), unique=True, nullable=False)
@@ -18,33 +25,97 @@ class User(Base):
     device_id = Column(String(255))
     user_device = Column(String(100))
     password_hash = Column(String(255), nullable=False)
-    role_id = Column(Integer, ForeignKey("smarttutor.user_roles.role_id"), nullable=False)
+    role_id = Column(Integer, ForeignKey("smarttutor.st_userroles.role_id"), nullable=False)
     is_active = Column(Boolean, default=True)
-
-
+    created_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
+    modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+     
+ 
 class Question(Base):
-    __tablename__ = "questions"
+    __tablename__ = "st_questions"
     __table_args__ = {"schema": "smarttutor"}
     question_id = Column(Integer, primary_key=True)
-    subject = Column(String(100))
+    parent_id = Column(Integer, ForeignKey("smarttutor.st_questions.question_id"), nullable=True)
+    level_no = Column(Integer, nullable=True)
+    class_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=True)
+    subject_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=True)
+    medium_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=True)
+    chapter_id = Column(Integer, ForeignKey("smarttutor.st_chapter.chapter_id"), nullable=True)
+    subchapter_id = Column(Integer, ForeignKey("smarttutor.st_chapter.chapter_id"), nullable=True)
     question_text = Column(Text, nullable=False)
-
+    language_translation = Column(String(255), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
+    modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
 
 class LOV(Base):
-    __tablename__ = "lov"
+    __tablename__ = "st_lov"
     __table_args__ = {"schema": "smarttutor"}
     lov_id = Column(Integer, primary_key=True)
-    type = Column(String(100), nullable=False)
-    is_hardcoded = Column(Boolean, default=False)
-    value = Column(String(255), nullable=False)
-    group_id = Column(String(100))
-    question_id = Column(Integer, ForeignKey("smarttutor.questions.question_id"), nullable=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
+    modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    type: Mapped[str] = mapped_column(String(100), nullable=False)
+    value: Mapped[str] = mapped_column(String(255), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Answer(Base):
-    __tablename__ = "answers"
+    __tablename__ = "st_answers"
     __table_args__ = {"schema": "smarttutor"}
     answer_id = Column(Integer, primary_key=True)
-    question_id = Column(Integer, ForeignKey("smarttutor.questions.question_id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("smarttutor.st_questions.question_id"), nullable=False)
     answer_text = Column(Text, nullable=False)
     is_correct = Column(Boolean)
+    created_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
+    modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class Chapter(Base):
+    __tablename__ = "st_chapter"
+    __table_args__ = {"schema": "smarttutor", "extend_existing": True}
+    chapter_id = Column(Integer, primary_key=True, autoincrement=True)
+    created_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
+    modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    board_lov_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=False)
+    medium_lov_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=False)
+    class_lov_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=False)
+    subject_lov_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=False)
+    chapter_no = Column(String(10), nullable=False)     # '1', '2' ...
+    title_en = Column(String(255), nullable=False)      # canonical text; other languages via st_translation
+    level_no = Column(Integer, nullable=False, default=1)
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    subchapters = relationship(
+        "Subchapter", back_populates="chapter", cascade="all, delete-orphan"
+    )
+
+
+class Subchapter(Base):
+    __tablename__ = "st_subchapter"
+    __table_args__ = {"schema": "smarttutor", "extend_existing": True}
+
+    subchapter_id = Column(Integer, primary_key=True, autoincrement=True)
+    chapter_id = Column(
+        Integer, ForeignKey("smarttutor.st_chapter.chapter_id", ondelete="CASCADE"), nullable=False
+    )
+    created_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
+    modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    subchapter_no = Column(String(10), nullable=False)  # '1.1', '1.2' ...
+    title_en = Column(String(255), nullable=False)
+    level_no = Column(Integer, nullable=False, default=2)
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    chapter = relationship("Chapter", back_populates="subchapters")   

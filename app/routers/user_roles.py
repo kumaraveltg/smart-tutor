@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import models, schemas
+from app.core.deps import get_current_user
 from app.database import get_db
 
 router = APIRouter(prefix="/admin/user-roles", tags=["User Roles"])
 
 @router.post("/", response_model=schemas.UserRoleOut, status_code=201)
-def create_role(role: schemas.UserRoleCreate, db: Session = Depends(get_db)):
+def create_role(role: schemas.UserRoleCreate, db: Session = Depends(get_current_user)):
     db_role = models.UserRole(**role.model_dump())
     db.add(db_role)
     db.commit()
@@ -14,12 +15,12 @@ def create_role(role: schemas.UserRoleCreate, db: Session = Depends(get_db)):
     return db_role
 
 @router.get("/", response_model=list[schemas.UserRoleOut])
-def list_roles(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def list_roles(skip: int = 0, limit: int = 100, db: Session = Depends(get_current_user)):
     return db.query(models.UserRole).offset(skip).limit(limit).all()
 
 
 @router.get("/{role_id}", response_model=schemas.UserRoleOut)
-def get_role(role_id: int, db: Session = Depends(get_db)):
+def get_role(role_id: int, db: Session = Depends(get_current_user)):
     role = db.query(models.UserRole).get(role_id)
     if not role:
         raise HTTPException(404, "Role not found")
@@ -27,7 +28,7 @@ def get_role(role_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{role_id}", response_model=schemas.UserRoleOut)
-def update_role(role_id: int, role: schemas.UserRoleCreate, db: Session = Depends(get_db)):
+def update_role(role_id: int, role: schemas.UserRoleCreate, db: Session = Depends(get_current_user)):
     db_role = db.query(models.UserRole).get(role_id)
     if not db_role:
         raise HTTPException(404, "Role not found")
@@ -38,7 +39,7 @@ def update_role(role_id: int, role: schemas.UserRoleCreate, db: Session = Depend
 
 
 @router.delete("/{role_id}", status_code=204)
-def delete_role(role_id: int, db: Session = Depends(get_db)):
+def delete_role(role_id: int, db: Session = Depends(get_current_user)):
     db_role = db.query(models.UserRole).get(role_id)
     if not db_role:
         raise HTTPException(404, "Role not found")

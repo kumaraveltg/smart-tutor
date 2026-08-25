@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, EmailStr
+from typing import List, Optional
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from sqlalchemy import Float
 
 
 # ---------- UserRole ----------
@@ -53,11 +55,9 @@ class QuestionOut(QuestionCreate):
 
 # ---------- LOV ----------
 class LOVCreate(BaseModel):
-    type: str
-    is_hardcoded: bool = False
+    type: str 
     value: str
-    group_id: str | None = None
-    question_id: int | None = None
+    active: bool | None = True 
 
 class LOVOut(LOVCreate):
     model_config = ConfigDict(from_attributes=True)
@@ -73,3 +73,77 @@ class AnswerCreate(BaseModel):
 class AnswerOut(AnswerCreate):
     model_config = ConfigDict(from_attributes=True)
     answer_id: int
+
+
+
+# ---------- Chapter ----------
+
+class ChapterBase(BaseModel):
+    board_lov_id: int
+    class_lov_id: int
+    medium_lov_id: int
+    subject_lov_id: int
+    chapter_no: str = Field(..., max_length=10)
+    title_en: str = Field(..., max_length=255)
+    sort_order: Optional[int] = 0
+    is_active: bool = True
+    created_by: Optional[str] = None
+    modified_by: Optional[str] = None
+
+
+class ChapterCreate(ChapterBase):
+    pass
+
+
+class ChapterUpdate(BaseModel):
+    chapter_no: Optional[str] = None
+    title_en: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+    modified_by: Optional[str] = None
+
+
+class ChapterOut(ChapterBase):
+    chapter_id: int
+    level_no: int
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Subchapter ----------
+
+class SubchapterBase(BaseModel):
+    chapter_id: int
+    subchapter_no: str = Field(..., max_length=10)
+    title_en: str = Field(..., max_length=255)
+    sort_order: Optional[int] = 0
+    is_active: bool = True
+    created_by: Optional[str] = None
+    modified_by: Optional[str] = None
+
+
+class SubchapterCreate(SubchapterBase):
+    pass
+
+
+class SubchapterUpdate(BaseModel):
+    subchapter_no: Optional[str] = None
+    title_en: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+    modified_by: Optional[str] = None
+
+
+class SubchapterOut(SubchapterBase):
+    subchapter_id: int
+    level_no: int
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Combined (chapter + its subchapters, for the left-menu tree) ----------
+
+class ChapterWithSubchapters(ChapterOut):
+    subchapters: List[SubchapterOut] = []

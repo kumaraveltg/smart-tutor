@@ -35,6 +35,14 @@ target_metadata = Base.metadata
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
 
+def include_object(object, name, type_, reflected, compare_to):
+        # Only ever compare/manage tables in our own schema — with
+        # include_schemas=True, Alembic would otherwise also see (and try
+        # to drop) tables belonging to other apps sharing this database,
+        # like hcaspay / hcaspayaxdef.
+        if type_ == "table" and object.schema != settings.postgres_schema:
+            return False
+        return True
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
@@ -79,7 +87,8 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection, target_metadata=target_metadata,
             version_table_schema=settings.postgres_schema,
-            include_schemas=True, 
+            include_schemas=True,
+            include_object=include_object,
         )
 
         with context.begin_transaction():

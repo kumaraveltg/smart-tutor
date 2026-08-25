@@ -3,10 +3,10 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.database import get_db
-from app.security import hash_password
+from app.core.security import hash_password,verify_password, create_access_token
+from app.core.deps import get_current_user
 
-router = APIRouter(prefix="/admin/users", tags=["Users"])
-
+router = APIRouter(prefix="/admin/users", tags=["Users"], dependencies=[Depends(get_current_user)])
 
 @router.post("/", response_model=schemas.UserOut, status_code=201)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
@@ -29,7 +29,7 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=list[schemas.UserOut])
-def list_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def list_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_current_user)):
     return db.query(models.User).offset(skip).limit(limit).all()
 
 
@@ -42,7 +42,7 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{user_id}", response_model=schemas.UserOut)
-def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(get_db)):
+def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(get_current_user)):
     db_user = db.query(models.User).get(user_id)
     if not db_user:
         raise HTTPException(404, "User not found")
@@ -56,7 +56,7 @@ def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(ge
 
 
 @router.delete("/{user_id}", status_code=204)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
+def delete_user(user_id: int, db: Session = Depends(get_current_user)):
     db_user = db.query(models.User).get(user_id)
     if not db_user:
         raise HTTPException(404, "User not found")

@@ -2,13 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.core.deps import get_current_user
 from app.database import get_db
+from app.core.security import hash_password,verify_password, create_access_token
 
 router = APIRouter(prefix="/admin/answers", tags=["Answers"])
 
 
 @router.post("/", response_model=schemas.AnswerOut, status_code=201)
-def create_answer(answer: schemas.AnswerCreate, db: Session = Depends(get_db)):
+def create_answer(answer: schemas.AnswerCreate, db: Session = Depends(get_current_user)):
     if not db.query(models.Question).get(answer.question_id):
         raise HTTPException(400, "question_id does not exist")
     db_answer = models.Answer(**answer.model_dump())
@@ -19,12 +21,12 @@ def create_answer(answer: schemas.AnswerCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=list[schemas.AnswerOut])
-def list_answers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def list_answers(skip: int = 0, limit: int = 100, db: Session = Depends(get_current_user)):
     return db.query(models.Answer).offset(skip).limit(limit).all()
 
 
 @router.get("/{answer_id}", response_model=schemas.AnswerOut)
-def get_answer(answer_id: int, db: Session = Depends(get_db)):
+def get_answer(answer_id: int, db: Session = Depends(get_current_user)):
     answer = db.query(models.Answer).get(answer_id)
     if not answer:
         raise HTTPException(404, "Answer not found")
@@ -32,7 +34,7 @@ def get_answer(answer_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{answer_id}", response_model=schemas.AnswerOut)
-def update_answer(answer_id: int, answer: schemas.AnswerCreate, db: Session = Depends(get_db)):
+def update_answer(answer_id: int, answer: schemas.AnswerCreate, db: Session = Depends(get_current_user)):
     db_answer = db.query(models.Answer).get(answer_id)
     if not db_answer:
         raise HTTPException(404, "Answer not found")
@@ -44,7 +46,7 @@ def update_answer(answer_id: int, answer: schemas.AnswerCreate, db: Session = De
 
 
 @router.delete("/{answer_id}", status_code=204)
-def delete_answer(answer_id: int, db: Session = Depends(get_db)):
+def delete_answer(answer_id: int, db: Session = Depends(get_current_user)):
     db_answer = db.query(models.Answer).get(answer_id)
     if not db_answer:
         raise HTTPException(404, "Answer not found")

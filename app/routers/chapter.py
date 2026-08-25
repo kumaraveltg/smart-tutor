@@ -1,0 +1,200 @@
+# app/routers/chapter.py
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import select
+from app import models, schemas 
+from app.core.deps import get_current_user
+from app.database import get_db
+from app.models import Chapter, Subchapter
+from app.schemas import ChapterCreate, ChapterUpdate, ChapterWithSubchapters, SubchapterCreate, SubchapterUpdate, ChapterUpdate, ChapterWithSubchapters, SubchapterCreate, SubchapterUpdate, ChapterOut, SubchapterOut
+from app.core.security import hash_password,verify_password, create_access_token
+ 
+router = APIRouter(prefix="/chapters", tags=["Chapters"])
+
+
+# ---------- Chapter (data access) ----------
+
+def db_get_chapter(db: Session, chapter_id: int) -> Optional[models.Chapter]:
+    return db.get(Chapter, chapter_id)
+
+
+def db_get_chapters(
+    db: Session,
+    board_lov_id: Optional[int] = None,
+    class_lov_id: Optional[int] = None,
+    subject_lov_id: Optional[int] = None,
+    is_active: Optional[bool] = True,
+) -> list[Chapter]:
+    """
+    Used for the student left-menu: pass board/class/subject to get only
+    the chapters relevant to that student.
+    """
+    query = select(Chapter)
+    if board_lov_id is not None:
+        query = query.where(Chapter.board_lov_id == board_lov_id)
+    if class_lov_id is not None:
+        query = query.where(Chapter.class_lov_id == class_lov_id)
+    if subject_lov_id is not None:
+        query = query.where(Chapter.subject_lov_id == subject_lov_id)
+    if is_active is not None:
+        query = query.where(Chapter.is_active == is_active)
+    query = query.order_by(Chapter.sort_order, Chapter.chapter_no)
+    return db.execute(query).scalars().all()
+
+
+def db_get_chapter_with_subchapters(db: Session, chapter_id: int) -> Optional[Chapter]:
+    return (
+        db.query(Chapter)
+        .options(joinedload(Chapter.subchapters))
+        .filter(Chapter.chapter_id == chapter_id)
+        .first()
+    )
+
+
+def db_create_chapter(db: Session, payload: ChapterCreate) -> Chapter:
+    chapter = Chapter(**payload.model_dump())  # level_no defaults to 1
+    db.add(chapter)
+    db.commit()
+    db.refresh(chapter)
+    return chapter
+
+
+def db_update_chapter(db: Session, chapter_id: int, payload: ChapterUpdate) -> Optional[Chapter]:
+    chapter = db_get_chapter(db, chapter_id)
+    if chapter is None:
+        return None
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(chapter, field, value)
+    db.commit()
+    db.refresh(chapter)
+    return chapter
+
+
+def db_delete_chapter(db: Session, chapter_id: int) -> bool:
+    chapter = db_get_chapter(db, chapter_id)
+    if chapter is None:
+        return False
+    db.delete(chapter)  # cascades to subchapters (ondelete="CASCADE" + relationship cascade)
+    db.commit()
+    return True
+
+
+# ---------- Subchapter (data access) ----------
+
+def db_get_subchapter(db: Session, subchapter_id: int) -> Optional[Subchapter]:
+    return db.get(Subchapter, subchapter_id)
+
+
+def db_get_subchapters(
+    db: Session, chapter_id: int, is_active: Optional[bool] = True
+) -> list[Subchapter]:
+    query = select(Subchapter).where(Subchapter.chapter_id == chapter_id)
+    if is_active is not None:
+        query = query.where(Subchapter.is_active == is_active)
+    query = query.order_by(Subchapter.sort_order, Subchapter.subchapter_no)
+    return db.execute(query).scalars().all()
+
+
+def db_create_subchapter(db: Session, payload: SubchapterCreate) -> Subchapter:
+    subchapter = Subchapter(**payload.model_dump())  # level_no defaults to 2
+    db.add(subchapter)
+    db.commit()
+    db.refresh(subchapter)
+    return subchapter
+
+
+def db_update_subchapter(
+    db: Session, subchapter_id: int, payload: SubchapterUpdate
+) -> Optional[Subchapter]:
+    subchapter = db_get_subchapter(db, subchapter_id)
+    if subchapter is None:
+        return None
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(subchapter, field, value)
+    db.commit()
+    db.refresh(subchapter)
+    return subchapter
+
+
+def db_delete_subchapter(db: Session, subchapter_id: int) -> bool:
+    subchapter = db_get_subchapter(db, subchapter_id)
+    if subchapter is None:
+        return False
+    db.delete(subchapter)
+    db.commit()
+    return True
+
+# ---------- Chapter (endpoints) ----------
+
+@router.get("/", response_model=list[ChapterOut])
+def list_chapters(
+    board_lov_id: Optional[int] = Query(None),
+    class_lov_id: Optional[int] = Query(None),
+    subject_lov_id: Optional[int] = Query(None),
+    db: Session = Depends(get_current_user),
+):
+    """Left-menu use case: pass board/class/subject to filter to the student's own list."""
+    return db_get_chapters(db, board_lov_id, class_lov_id, subject_lov_id)
+
+
+@router.get("/{chapter_id}", response_model=ChapterWithSubchapters)
+def get_chapter(chapter_id: int, db: Session = Depends(get_current_user)):
+    chapter = db_get_chapter_with_subchapters(db, chapter_id)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return chapter
+
+
+@router.post("/", response_model=ChapterOut, status_code=201)
+def create_chapter(payload: ChapterCreate, db: Session = Depends(get_current_user)):
+    return db_create_chapter(db, payload)
+
+
+@router.put("/{chapter_id}", response_model=ChapterOut)
+def update_chapter(chapter_id: int, payload: ChapterUpdate, db: Session = Depends(get_current_user)):
+    chapter = db_update_chapter(db, chapter_id, payload)
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return chapter
+
+
+@router.delete("/{chapter_id}", status_code=204)
+def delete_chapter(chapter_id: int, db: Session = Depends(get_current_user)):
+    if not db_delete_chapter(db, chapter_id):
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+
+# ---------- Subchapter (endpoints, nested under chapter) ----------
+
+@router.get("/{chapter_id}/subchapters", response_model=list[SubchapterOut])
+def list_subchapters(chapter_id: int, db: Session = Depends(get_current_user)):
+    return db_get_subchapters(db, chapter_id)
+
+
+@router.post("/{chapter_id}/subchapters", response_model=SubchapterOut, status_code=201)
+def create_subchapter(chapter_id: int, payload: SubchapterCreate, db: Session = Depends(get_current_user)):
+    if payload.chapter_id != chapter_id:
+        raise HTTPException(status_code=400, detail="chapter_id in body must match URL")
+    return db_create_subchapter(db, payload)
+
+
+@router.put("/subchapters/{subchapter_id}", response_model=SubchapterOut)
+def update_subchapter(
+    subchapter_id: int, payload: SubchapterUpdate, db: Session = Depends(get_current_user)
+):
+    subchapter = db_update_subchapter(db, subchapter_id, payload)
+    if subchapter is None:
+        raise HTTPException(status_code=404, detail="Subchapter not found")
+    return subchapter
+
+
+@router.delete("/subchapters/{subchapter_id}", status_code=204)
+def delete_subchapter(subchapter_id: int, db: Session = Depends(get_current_user)):
+    if not db_delete_subchapter(db, subchapter_id):
+        raise HTTPException(status_code=404, detail="Subchapter not found")
+
+
+# In your main app:
+# from app.routers.chapter import router as chapter_router
+# app.include_router(chapter_router)
