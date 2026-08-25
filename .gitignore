@@ -1,9 +1,18 @@
+# Virtual environment
 venv/
+.venv/
+
+# Environment / secrets
 .env
+
+# Python cache
 __pycache__/
-*.pyc
-alembic/versions/__pycache__/
-app/__pycache__/
-app/routers/__pycache__/
-scritp.py.mako
-alembic/versions/*.py
+*.py[cod]
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
