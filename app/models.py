@@ -31,8 +31,9 @@ class User(Base):
     created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
     modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-     
- 
+    full_name = Column(String(150)) 
+    role = relationship("UserRole") 
+    
 class Question(Base):
     __tablename__ = "st_questions"
     __table_args__ = {"schema": "smarttutor"}

@@ -29,7 +29,7 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=list[schemas.UserOut])
-def list_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_current_user)):
+def list_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return db.query(models.User).offset(skip).limit(limit).all()
 
 
@@ -42,7 +42,7 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{user_id}", response_model=schemas.UserOut)
-def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(get_current_user)):
+def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).get(user_id)
     if not db_user:
         raise HTTPException(404, "User not found")
@@ -56,7 +56,7 @@ def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(ge
 
 
 @router.delete("/{user_id}", status_code=204)
-def delete_user(user_id: int, db: Session = Depends(get_current_user)):
+def delete_user(user_id: int, db: Session = Depends(get_db)):
     db_user = db.query(models.User).get(user_id)
     if not db_user:
         raise HTTPException(404, "User not found")
