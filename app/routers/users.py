@@ -47,13 +47,18 @@ def update_user(user_id: int, user: schemas.UserUpdate, db: Session = Depends(ge
     if not db_user:
         raise HTTPException(404, "User not found")
 
-    for field, value in user.model_dump(exclude_unset=True).items():
+    update_data = user.model_dump(exclude_unset=True)
+
+    new_password = update_data.pop("password", None)
+    if new_password:
+        db_user.password_hash = hash_password(new_password)
+
+    for field, value in update_data.items():
         setattr(db_user, field, value)
 
     db.commit()
     db.refresh(db_user)
     return db_user
-
 
 @router.delete("/{user_id}", status_code=204)
 def delete_user(user_id: int, db: Session = Depends(get_db)):

@@ -21,6 +21,7 @@ class UserCreate(BaseModel):
     user_device: str | None = None
     role_id: int
     password: str  # plain text in, hashed before saving
+    full_name: str | None = None
 
 class UserUpdate(BaseModel):
     username: str | None = None
@@ -30,6 +31,8 @@ class UserUpdate(BaseModel):
     user_device: str | None = None
     role_id: int | None = None
     is_active: bool | None = None
+    password: str | None = None
+    full_name: str | None = None
 
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -41,6 +44,7 @@ class UserOut(BaseModel):
     user_device: str | None = None
     role_id: int
     is_active: bool
+    full_name: str | None = None
 
 
 # ---------- Question ----------
