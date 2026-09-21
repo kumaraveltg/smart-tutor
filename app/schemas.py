@@ -1,15 +1,23 @@
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import Float
+from datetime import datetime
 
 
 # ---------- UserRole ----------
 class UserRoleCreate(BaseModel):
     role_name: str
+    created_by: Optional[str] = None
+    modified_by: Optional[str] = None
 
 class UserRoleOut(UserRoleCreate):
     model_config = ConfigDict(from_attributes=True)
     role_id: int
+    role_name: str
+    created_on: Optional[datetime] = None
+    modified_on: Optional[datetime] = None
+    created_by: Optional[str] = None
+    modified_by: Optional[str] = None
 
 
 # ---------- User ----------
@@ -22,6 +30,8 @@ class UserCreate(BaseModel):
     role_id: int
     password: str  # plain text in, hashed before saving
     full_name: str | None = None
+    modified_by: str | None = None
+    created_by: str | None = None
 
 class UserUpdate(BaseModel):
     username: str | None = None
@@ -33,6 +43,7 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
     password: str | None = None
     full_name: str | None = None
+    modified_by: str | None = None
 
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -45,7 +56,8 @@ class UserOut(BaseModel):
     role_id: int
     is_active: bool
     full_name: str | None = None
-
+    created_on: Optional[datetime] = None
+    modified_on: Optional[datetime] = None  
 
 # ---------- Question ----------
 class QuestionCreate(BaseModel):
@@ -62,6 +74,8 @@ class LOVCreate(BaseModel):
     type: str 
     value: str
     active: bool | None = True 
+    created_by: str | None = None
+    modified_by: str | None = None
 
 class LOVOut(LOVCreate):
     model_config = ConfigDict(from_attributes=True)
@@ -93,6 +107,8 @@ class ChapterBase(BaseModel):
     is_active: bool = True
     created_by: Optional[str] = None
     modified_by: Optional[str] = None
+    title_ta: Optional[str] = None
+    
 
 
 class ChapterCreate(ChapterBase):
@@ -105,6 +121,7 @@ class ChapterUpdate(BaseModel):
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
     modified_by: Optional[str] = None
+    title_ta: Optional[str] = None
 
 
 class ChapterOut(ChapterBase):
@@ -125,6 +142,7 @@ class SubchapterBase(BaseModel):
     is_active: bool = True
     created_by: Optional[str] = None
     modified_by: Optional[str] = None
+    title_ta: Optional[str] = None
 
 
 class SubchapterCreate(SubchapterBase):
@@ -137,6 +155,7 @@ class SubchapterUpdate(BaseModel):
     sort_order: Optional[int] = None
     is_active: Optional[bool] = None
     modified_by: Optional[str] = None
+    title_ta: Optional[str] = None
 
 
 class SubchapterOut(SubchapterBase):
@@ -151,3 +170,15 @@ class SubchapterOut(SubchapterBase):
 
 class ChapterWithSubchapters(ChapterOut):
     subchapters: List[SubchapterOut] = []
+
+class ChapterTranslationIn(BaseModel):
+    title: str
+    modified_by: Optional[str] = None
+
+class ChapterTranslationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    chapter_id: int
+    lang_code: str
+    title: str
+    modified_by: Optional[str] = None
+    modified_on: Optional[datetime] = None

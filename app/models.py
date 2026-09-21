@@ -95,6 +95,8 @@ class Chapter(Base):
     level_no = Column(Integer, nullable=False, default=1)
     sort_order = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
+    title_ta = Column(String(255), nullable=True)
+    translations = relationship("ChapterTranslation", cascade="all, delete-orphan")
 
     subchapters = relationship(
         "Subchapter", back_populates="chapter", cascade="all, delete-orphan"
@@ -118,5 +120,20 @@ class Subchapter(Base):
     level_no = Column(Integer, nullable=False, default=2)
     sort_order = Column(Integer, nullable=False, default=0)
     is_active = Column(Boolean, nullable=False, default=True)
+    title_ta = Column(String(255), nullable=True)
 
     chapter = relationship("Chapter", back_populates="subchapters")   
+
+class ChapterTranslation(Base):
+    __tablename__ = "chapter_translations"
+    __table_args__ = {"schema": "smarttutor", "extend_existing": True}
+
+    chapter_id = Column(Integer, ForeignKey("smarttutor.st_chapter.chapter_id", ondelete="CASCADE"), primary_key=True)
+    lang_code = Column(String(10), primary_key=True)
+    title = Column(String(255), nullable=False)
+    created_by = Column(String(100), nullable=True)
+    created_on = Column(DateTime, nullable=True)
+    modified_by = Column(String(100), nullable=True)
+    modified_on = Column(DateTime, nullable=True)
+
+    chapter = relationship("Chapter", back_populates="translations")

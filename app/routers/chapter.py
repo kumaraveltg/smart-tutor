@@ -9,8 +9,11 @@ from app.database import get_db
 from app.models import Chapter, Subchapter
 from app.schemas import ChapterCreate, ChapterUpdate, ChapterWithSubchapters, SubchapterCreate, SubchapterUpdate, ChapterUpdate, ChapterWithSubchapters, SubchapterCreate, SubchapterUpdate, ChapterOut, SubchapterOut
 from app.core.security import hash_password,verify_password, create_access_token
+from app.models import ChapterTranslation
+from app.schemas import ChapterTranslationIn, ChapterTranslationOut
+from datetime import datetime, timezone
  
-router = APIRouter(prefix="/chapters", tags=["Chapters"])
+router = APIRouter(prefix="/admin/chapters", tags=["Chapters"])
 
 
 # ---------- Chapter (data access) ----------
@@ -80,6 +83,75 @@ def db_delete_chapter(db: Session, chapter_id: int) -> bool:
     return True
 
 
+# ---------- Translation (data access) ----------
+
+def db_get_translation(db: Session, chapter_id: int, lang_code: str):
+    return db.get(ChapterTranslation, (chapter_id, lang_code))
+
+
+def db_list_translations(db: Session, chapter_id: int):
+    return (
+        db.query(ChapterTranslation)
+        .filter(ChapterTranslation.chapter_id == chapter_id)
+        .all()
+    )
+
+
+def db_upsert_translation(db: Session, chapter_id: int, lang_code: str, payload: ChapterTranslationIn):
+    row = db_get_translation(db, chapter_id, lang_code)
+    if row is None:
+        row = ChapterTranslation(chapter_id=chapter_id, lang_code=lang_code)
+        db.add(row)
+    row.title = payload.title
+    row.modified_by = payload.modified_by
+    row.modified_on = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def db_delete_translation(db: Session, chapter_id: int, lang_code: str) -> bool:
+    row = db_get_translation(db, chapter_id, lang_code)
+    if row is None:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+
+# ---------- Translation (data access) ----------
+
+def db_get_translation(db: Session, chapter_id: int, lang_code: str):
+    return db.get(ChapterTranslation, (chapter_id, lang_code))
+
+
+def db_list_translations(db: Session, chapter_id: int):
+    return (
+        db.query(ChapterTranslation)
+        .filter(ChapterTranslation.chapter_id == chapter_id)
+        .all()
+    )
+
+
+def db_upsert_translation(db: Session, chapter_id: int, lang_code: str, payload: ChapterTranslationIn):
+    row = db_get_translation(db, chapter_id, lang_code)
+    if row is None:
+        row = ChapterTranslation(chapter_id=chapter_id, lang_code=lang_code)
+        db.add(row)
+    row.title = payload.title
+    row.modified_by = payload.modified_by
+    row.modified_on = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def db_delete_translation(db: Session, chapter_id: int, lang_code: str) -> bool:
+    row = db_get_translation(db, chapter_id, lang_code)
+    if row is None:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
 # ---------- Subchapter (data access) ----------
 
 def db_get_subchapter(db: Session, subchapter_id: int) -> Optional[Subchapter]:
@@ -195,6 +267,31 @@ def delete_subchapter(subchapter_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Subchapter not found")
 
 
-# In your main app:
-# from app.routers.chapter import router as chapter_router
-# app.include_router(chapter_router)
+# ---------- Translation (endpoints) ----------
+
+@router.get("/{chapter_id}/translations", response_model=list[ChapterTranslationOut])
+def list_chapter_translations(chapter_id: int, db: Session = Depends(get_db)):
+    return db_list_translations(db, chapter_id)
+
+
+@router.get("/{chapter_id}/translations/{lang_code}", response_model=ChapterTranslationOut)
+def get_chapter_translation(chapter_id: int, lang_code: str, db: Session = Depends(get_db)):
+    row = db_get_translation(db, chapter_id, lang_code)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Translation not found")
+    return row
+
+
+@router.put("/{chapter_id}/translations/{lang_code}", response_model=ChapterTranslationOut)
+def upsert_chapter_translation(
+    chapter_id: int, lang_code: str, payload: ChapterTranslationIn, db: Session = Depends(get_db)
+):
+    if db_get_chapter(db, chapter_id) is None:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return db_upsert_translation(db, chapter_id, lang_code, payload)
+
+
+@router.delete("/{chapter_id}/translations/{lang_code}", status_code=204)
+def delete_chapter_translation(chapter_id: int, lang_code: str, db: Session = Depends(get_db)):
+    if not db_delete_translation(db, chapter_id, lang_code):
+        raise HTTPException(status_code=404, detail="Translation not found")

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import models, schemas
@@ -34,6 +35,8 @@ def update_role(role_id: int, role: schemas.UserRoleCreate, db: Session = Depend
     if not db_role:
         raise HTTPException(404, "Role not found")
     db_role.role_name = role.role_name
+    db_role.modified_by = role.modified_by
+    db_role.modified_on = datetime.now(timezone.utc)
     db.commit()
     db.refresh(db_role)
     return db_role
