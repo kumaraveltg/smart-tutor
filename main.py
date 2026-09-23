@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routers import auth, chapter, user_roles, users, lov, questions, answers
+from app.routers import auth, chapter, user_roles, users, lov, questions, answers,subchapter
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers.chapter import router as chapter_router
 
@@ -13,6 +13,7 @@ app.include_router(answers.router)
 app.include_router(chapter.router)
 app.include_router(auth.router)
 app.include_router(chapter_router)
+app.include_router(subchapter.router)
 
 @app.get("/")
 def root():

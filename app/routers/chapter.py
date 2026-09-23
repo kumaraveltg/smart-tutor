@@ -237,34 +237,7 @@ def delete_chapter(chapter_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Chapter not found")
 
 
-# ---------- Subchapter (endpoints, nested under chapter) ----------
 
-@router.get("/{chapter_id}/subchapters", response_model=list[SubchapterOut])
-def list_subchapters(chapter_id: int, db: Session = Depends(get_db)):
-    return db_get_subchapters(db, chapter_id)
-
-
-@router.post("/{chapter_id}/subchapters", response_model=SubchapterOut, status_code=201)
-def create_subchapter(chapter_id: int, payload: SubchapterCreate, db: Session = Depends(get_db)):
-    if payload.chapter_id != chapter_id:
-        raise HTTPException(status_code=400, detail="chapter_id in body must match URL")
-    return db_create_subchapter(db, payload)
-
-
-@router.put("/subchapters/{subchapter_id}", response_model=SubchapterOut)
-def update_subchapter(
-    subchapter_id: int, payload: SubchapterUpdate, db: Session = Depends(get_db)
-):
-    subchapter = db_update_subchapter(db, subchapter_id, payload)
-    if subchapter is None:
-        raise HTTPException(status_code=404, detail="Subchapter not found")
-    return subchapter
-
-
-@router.delete("/subchapters/{subchapter_id}", status_code=204)
-def delete_subchapter(subchapter_id: int, db: Session = Depends(get_db)):
-    if not db_delete_subchapter(db, subchapter_id):
-        raise HTTPException(status_code=404, detail="Subchapter not found")
 
 
 # ---------- Translation (endpoints) ----------
