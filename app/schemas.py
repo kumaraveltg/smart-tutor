@@ -182,3 +182,18 @@ class ChapterTranslationOut(BaseModel):
     title: str
     modified_by: Optional[str] = None
     modified_on: Optional[datetime] = None
+
+
+class SubchapterTranslationIn(BaseModel):
+    title: str
+    modified_by: Optional[str] = None
+ 
+ 
+class SubchapterTranslationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    subchapter_id: int
+    lang_code: str
+    title: str
+    modified_by: Optional[str] = None
+    modified_on: Optional[datetime] = None
+     

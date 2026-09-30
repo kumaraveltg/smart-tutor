@@ -83,40 +83,6 @@ def db_delete_chapter(db: Session, chapter_id: int) -> bool:
     return True
 
 
-# ---------- Translation (data access) ----------
-
-def db_get_translation(db: Session, chapter_id: int, lang_code: str):
-    return db.get(ChapterTranslation, (chapter_id, lang_code))
-
-
-def db_list_translations(db: Session, chapter_id: int):
-    return (
-        db.query(ChapterTranslation)
-        .filter(ChapterTranslation.chapter_id == chapter_id)
-        .all()
-    )
-
-
-def db_upsert_translation(db: Session, chapter_id: int, lang_code: str, payload: ChapterTranslationIn):
-    row = db_get_translation(db, chapter_id, lang_code)
-    if row is None:
-        row = ChapterTranslation(chapter_id=chapter_id, lang_code=lang_code)
-        db.add(row)
-    row.title = payload.title
-    row.modified_by = payload.modified_by
-    row.modified_on = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(row)
-    return row
-
-
-def db_delete_translation(db: Session, chapter_id: int, lang_code: str) -> bool:
-    row = db_get_translation(db, chapter_id, lang_code)
-    if row is None:
-        return False
-    db.delete(row)
-    db.commit()
-    return True
 
 # ---------- Translation (data access) ----------
 
@@ -152,51 +118,7 @@ def db_delete_translation(db: Session, chapter_id: int, lang_code: str) -> bool:
     db.delete(row)
     db.commit()
     return True
-# ---------- Subchapter (data access) ----------
-
-def db_get_subchapter(db: Session, subchapter_id: int) -> Optional[Subchapter]:
-    return db.get(Subchapter, subchapter_id)
-
-
-def db_get_subchapters(
-    db: Session, chapter_id: int, is_active: Optional[bool] = True
-) -> list[Subchapter]:
-    query = select(Subchapter).where(Subchapter.chapter_id == chapter_id)
-    if is_active is not None:
-        query = query.where(Subchapter.is_active == is_active)
-    query = query.order_by(Subchapter.sort_order, Subchapter.subchapter_no)
-    return db.execute(query).scalars().all()
-
-
-def db_create_subchapter(db: Session, payload: SubchapterCreate) -> Subchapter:
-    subchapter = Subchapter(**payload.model_dump())  # level_no defaults to 2
-    db.add(subchapter)
-    db.commit()
-    db.refresh(subchapter)
-    return subchapter
-
-
-def db_update_subchapter(
-    db: Session, subchapter_id: int, payload: SubchapterUpdate
-) -> Optional[Subchapter]:
-    subchapter = db_get_subchapter(db, subchapter_id)
-    if subchapter is None:
-        return None
-    for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(subchapter, field, value)
-    db.commit()
-    db.refresh(subchapter)
-    return subchapter
-
-
-def db_delete_subchapter(db: Session, subchapter_id: int) -> bool:
-    subchapter = db_get_subchapter(db, subchapter_id)
-    if subchapter is None:
-        return False
-    db.delete(subchapter)
-    db.commit()
-    return True
-
+#
 # ---------- Chapter (endpoints) ----------
 
 @router.get("/", response_model=list[ChapterOut])

@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from app import models
 from app.core.deps import get_current_user
 from app.database import get_db
-from app.models import Subchapter
-from app.schemas import SubchapterCreate, SubchapterUpdate, SubchapterOut
+from app.models import Subchapter,SubchapterTranslation
+from app.schemas import SubchapterCreate, SubchapterTranslationIn, SubchapterTranslationOut, SubchapterUpdate, SubchapterOut
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/admin/subchapters", tags=["Subchapters"])
 
@@ -107,3 +108,89 @@ def update_subchapter(subchapter_id: int, payload: SubchapterUpdate, db: Session
 def delete_subchapter(subchapter_id: int, db: Session = Depends(get_db)):
     if not db_delete_subchapter(db, subchapter_id):
         raise HTTPException(status_code=404, detail="Subchapter not found")
+
+
+# ---------- Translation (data access) ----------
+ 
+def db_get_subchapter_translation(db: Session, subchapter_id: int, lang_code: str):
+    return db.get(SubchapterTranslation, (subchapter_id, lang_code))
+ 
+ 
+def db_list_subchapter_translations(db: Session, subchapter_id: int):
+    return (
+        db.query(SubchapterTranslation)
+        .filter(SubchapterTranslation.subchapter_id == subchapter_id)
+        .all()
+    )
+ 
+ 
+def db_upsert_subchapter_translation(
+    db: Session, subchapter_id: int, lang_code: str, payload: SubchapterTranslationIn
+):
+    row = db_get_subchapter_translation(db, subchapter_id, lang_code)
+    if row is None:
+        row = SubchapterTranslation(subchapter_id=subchapter_id, lang_code=lang_code)
+        db.add(row)
+    row.title = payload.title
+    row.modified_by = payload.modified_by
+    row.modified_on = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return row
+ 
+ 
+def db_delete_subchapter_translation(db: Session, subchapter_id: int, lang_code: str) -> bool:
+    row = db_get_subchapter_translation(db, subchapter_id, lang_code)
+    if row is None:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+ 
+ 
+# ---------- Translation (endpoints) ----------
+ 
+@router.get(
+    "/{subchapter_id}/translations",
+    response_model=list[SubchapterTranslationOut],
+)
+def list_subchapter_translations(subchapter_id: int, db: Session = Depends(get_db)):
+    return db_list_subchapter_translations(db, subchapter_id)
+ 
+ 
+@router.get(
+    "/{subchapter_id}/translations/{lang_code}",
+    response_model=SubchapterTranslationOut,
+)
+def get_subchapter_translation(subchapter_id: int, lang_code: str, db: Session = Depends(get_db)):
+    row = db_get_subchapter_translation(db, subchapter_id, lang_code)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Translation not found")
+    return row
+ 
+ 
+@router.put(
+    "/{subchapter_id}/translations/{lang_code}",
+    response_model=SubchapterTranslationOut,
+)
+
+def upsert_subchapter_translation(
+    subchapter_id: int,
+    lang_code: str,
+    payload: SubchapterTranslationIn,
+    db: Session = Depends(get_db),
+):
+    row = db_get_subchapter_translation(db, subchapter_id, lang_code)
+    if row is None:
+        row = SubchapterTranslation(subchapter_id=subchapter_id, lang_code=lang_code)
+        db.add(row)
+    row.title = payload.title
+    row.modified_by = payload.modified_by
+    row.modified_on = datetime.now(timezone.utc)
+    db.commit() 
+
+@router.delete("/{subchapter_id}/translations/{lang_code}", status_code=204)
+def delete_subchapter_translation(subchapter_id: int, lang_code: str, db: Session = Depends(get_db)):
+    if not db_delete_subchapter_translation(db, subchapter_id, lang_code):
+        raise HTTPException(status_code=404, detail="Translation not found")
+ 

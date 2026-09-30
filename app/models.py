@@ -123,6 +123,7 @@ class Subchapter(Base):
     title_ta = Column(String(255), nullable=True)
 
     chapter = relationship("Chapter", back_populates="subchapters")   
+    translations = relationship("SubchapterTranslation", back_populates="subchapter", cascade="all, delete-orphan", passive_deletes=True)
 
 class ChapterTranslation(Base):
     __tablename__ = "chapter_translations"
@@ -137,3 +138,25 @@ class ChapterTranslation(Base):
     modified_on = Column(DateTime, nullable=True)
 
     chapter = relationship("Chapter", back_populates="translations")
+
+
+class SubchapterTranslation(Base):
+    __tablename__ = "subchapter_translations"
+    __table_args__ = {"schema": "smarttutor", "extend_existing": True}    
+
+   
+    subchapter_id = Column(
+        Integer,
+        ForeignKey("smarttutor.st_subchapter.subchapter_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    lang_code = Column(String(10), primary_key=True)
+    title = Column(String(255), nullable=False)
+    created_by = Column(String(100), nullable=True)
+    created_on = Column(DateTime(timezone=True), nullable=True)
+    modified_by = Column(String(100), nullable=True)
+    modified_on = Column(DateTime(timezone=True), nullable=True)
+
+    subchapter = relationship("Subchapter", back_populates="translations")
+ 
+ 
