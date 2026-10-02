@@ -215,6 +215,10 @@ class SubchapterUpdate(BaseModel):
 class SubchapterOut(SubchapterBase):
     subchapter_id: int
     level_no: int
+    created_by: str | None = None
+    created_on: datetime | None = None
+    modified_by: str | None = None
+    modified_on: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -265,3 +269,17 @@ class QuestionTranslationOut(BaseModel):
     modified_by: str | None = None
     modified_on: datetime | None = None
     model_config = ConfigDict(from_attributes=True)    
+
+
+
+class TermOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    word: str
+
+
+class TermCreate(BaseModel):
+    english_word: str = Field(..., min_length=1, max_length=100)
+    category: Optional[str] = None
+    translations: Dict[str, str] = {}  # {"ta": "முக்கோணம்"}

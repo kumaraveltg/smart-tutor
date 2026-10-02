@@ -104,8 +104,25 @@ def list_subchapters(
 
 @router.post("/", response_model=SubchapterOut, status_code=201)
 def create_subchapter(payload: SubchapterCreate, db: Session = Depends(get_db)):
-    return db_create_subchapter(db, payload)
+    existing = (
+        db.query(models.Subchapter)
+        .filter(
+            models.Subchapter.chapter_id == payload.chapter_id,
+            models.Subchapter.subchapter_no == payload.subchapter_no,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(409, "This subchapter already exists in the chapter")
 
+    return db_create_subchapter(db, payload)
+    
+@router.get("/{subchapter_id}", response_model=SubchapterOut)
+def get_subchapter(subchapter_id: int, db: Session = Depends(get_db)):
+    subchapter = db.get(models.Subchapter, subchapter_id)
+    if not subchapter:
+        raise HTTPException(404, "Subchapter not found")
+    return subchapter
 
 @router.put("/{subchapter_id}", response_model=SubchapterOut)
 def update_subchapter(subchapter_id: int, payload: SubchapterUpdate, db: Session = Depends(get_db)):

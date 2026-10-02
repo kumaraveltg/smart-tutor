@@ -1,5 +1,5 @@
 from typing import Optional
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, Boolean, ForeignKey  
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, Boolean, ForeignKey,UniqueConstraint  
 from sqlalchemy.orm import Mapped, mapped_column, relationship 
 from app.database import Base
 from datetime import datetime, timezone 
@@ -38,19 +38,17 @@ class Question(Base):
     __tablename__ = "st_questions"
     __table_args__ = {"schema": "smarttutor"}
     question_id = Column(Integer, primary_key=True)
-    parent_id = Column(Integer, ForeignKey("smarttutor.st_questions.question_id"), nullable=True)
-    level_no = Column(Integer, nullable=True)
     class_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=True)
-    subject_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=True)
     medium_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=True)
     chapter_id = Column(Integer, ForeignKey("smarttutor.st_chapter.chapter_id"), nullable=True)
-    subchapter_id = Column(Integer, ForeignKey("smarttutor.st_chapter.chapter_id"), nullable=True)
     question_text = Column(Text, nullable=False)
     language_translation = Column(String(255), nullable=True)
     created_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
     modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    exercise_no: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     translations = relationship(
     "QuestionTranslation",
     back_populates="question",
@@ -183,3 +181,29 @@ class QuestionTranslation(Base):
     question = relationship("Question", back_populates="translations")
  
  
+
+class GlossaryTerm(Base):
+    __tablename__ = "glossary_terms"
+
+    id = Column(Integer, primary_key=True)
+    english_word = Column(String(100), nullable=False, unique=True, index=True)
+    category = Column(String(50), nullable=True)  # algebra, geometry ...
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    translations = relationship(
+        "GlossaryTermTranslation",
+        back_populates="term",
+        cascade="all, delete-orphan",
+    )
+
+
+class GlossaryTermTranslation(Base):
+    __tablename__ = "glossary_term_translations"
+    __table_args__ = (UniqueConstraint("term_id", "language_code", name="uq_term_lang"),)
+
+    id = Column(Integer, primary_key=True)
+    term_id = Column(Integer, ForeignKey("glossary_terms.id"), nullable=False, index=True)
+    language_code = Column(String(10), nullable=False, index=True)  # "ta", "hi", ...
+    translated_word = Column(String(200), nullable=False)
+
+    term = relationship("GlossaryTerm", back_populates="translations")
