@@ -1,7 +1,7 @@
 # app/routers/subchapter.py
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select,and_
 from sqlalchemy.orm import Session
 from app import models
 from app.core.deps import get_current_user
@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import Subchapter,SubchapterTranslation
 from app.schemas import SubchapterCreate, SubchapterTranslationIn, SubchapterTranslationOut, SubchapterUpdate, SubchapterOut
 from datetime import datetime, timezone
+ 
 
 router = APIRouter(prefix="/admin/subchapters", tags=["Subchapters"])
 
@@ -83,13 +84,23 @@ def list_subchapters(
     return db_get_subchapters(db, chapter_id, is_active)
 
 
-@router.get("/{subchapter_id}", response_model=SubchapterOut)
-def get_subchapter(subchapter_id: int, db: Session = Depends(get_db)):
-    subchapter = db_get_subchapter(db, subchapter_id)
-    if subchapter is None:
-        raise HTTPException(status_code=404, detail="Subchapter not found")
-    return subchapter
-
+@router.get("/", response_model=list[SubchapterOut])
+def list_subchapters(
+    chapter_id: Optional[int] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    db: Session = Depends(get_db),
+):
+    subs = db_get_subchapters(db, chapter_id, is_active)
+    ta = {
+        t.subchapter_id: t.title
+        for t in db.query(SubchapterTranslation).filter(SubchapterTranslation.lang_code == "ta").all()
+    }
+    out = []
+    for s in subs:
+        item = SubchapterOut.model_validate(s)
+        item.title_ta = ta.get(s.subchapter_id) or item.title_ta
+        out.append(item)
+    return out
 
 @router.post("/", response_model=SubchapterOut, status_code=201)
 def create_subchapter(payload: SubchapterCreate, db: Session = Depends(get_db)):
@@ -158,36 +169,33 @@ def list_subchapter_translations(subchapter_id: int, db: Session = Depends(get_d
     return db_list_subchapter_translations(db, subchapter_id)
  
  
-@router.get(
-    "/{subchapter_id}/translations/{lang_code}",
-    response_model=SubchapterTranslationOut,
-)
-def get_subchapter_translation(subchapter_id: int, lang_code: str, db: Session = Depends(get_db)):
-    row = db_get_subchapter_translation(db, subchapter_id, lang_code)
-    if row is None:
-        raise HTTPException(status_code=404, detail="Translation not found")
-    return row
- 
- 
 @router.put(
     "/{subchapter_id}/translations/{lang_code}",
     response_model=SubchapterTranslationOut,
 )
-
 def upsert_subchapter_translation(
     subchapter_id: int,
     lang_code: str,
     payload: SubchapterTranslationIn,
     db: Session = Depends(get_db),
 ):
-    row = db_get_subchapter_translation(db, subchapter_id, lang_code)
-    if row is None:
-        row = SubchapterTranslation(subchapter_id=subchapter_id, lang_code=lang_code)
-        db.add(row)
-    row.title = payload.title
-    row.modified_by = payload.modified_by
-    row.modified_on = datetime.now(timezone.utc)
-    db.commit() 
+    if db_get_subchapter(db, subchapter_id) is None:
+        raise HTTPException(status_code=404, detail="Subchapter not found")
+    return db_upsert_subchapter_translation(db, subchapter_id, lang_code, payload)
+ 
+@router.put(
+    "/{subchapter_id}/translations/{lang_code}",
+    response_model=SubchapterTranslationOut,
+)
+def upsert_subchapter_translation(
+    subchapter_id: int,
+    lang_code: str,
+    payload: SubchapterTranslationIn,
+    db: Session = Depends(get_db),
+):
+    if db_get_subchapter(db, subchapter_id) is None:
+        raise HTTPException(status_code=404, detail="Subchapter not found")
+    return db_upsert_subchapter_translation(db, subchapter_id, lang_code, payload)
 
 @router.delete("/{subchapter_id}/translations/{lang_code}", status_code=204)
 def delete_subchapter_translation(subchapter_id: int, lang_code: str, db: Session = Depends(get_db)):

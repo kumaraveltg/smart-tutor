@@ -51,7 +51,11 @@ class Question(Base):
     created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
     modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-    
+    translations = relationship(
+    "QuestionTranslation",
+    back_populates="question",
+    cascade="all, delete-orphan",
+    )
 
 class LOV(Base):
     __tablename__ = "st_lov"
@@ -158,5 +162,24 @@ class SubchapterTranslation(Base):
     modified_on = Column(DateTime(timezone=True), nullable=True)
 
     subchapter = relationship("Subchapter", back_populates="translations")
+
+
+class QuestionTranslation(Base):
+    __tablename__ = "question_translations"
+    __table_args__ = {"schema": "smarttutor", "extend_existing": True}
+
+    question_id = Column(
+        Integer,
+        ForeignKey("smarttutor.st_questions.question_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    lang_code = Column(String(10), primary_key=True)
+    question_text = Column(Text, nullable=False)
+    created_by = Column(String(100), nullable=True)
+    created_on = Column(DateTime(timezone=True), nullable=True)
+    modified_by = Column(String(100), nullable=True)
+    modified_on = Column(DateTime(timezone=True), nullable=True)
+
+    question = relationship("Question", back_populates="translations")
  
  

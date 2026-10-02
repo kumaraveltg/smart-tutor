@@ -61,13 +61,67 @@ class UserOut(BaseModel):
 
 # ---------- Question ----------
 class QuestionCreate(BaseModel):
-    subject: str | None = None
+    parent_id: int | None = None
+    level_no: int | None = None  # worked out by the API when left empty
+    class_id: int | None = None
+    subject_id: int | None = None
+    medium_id: int | None = None
+    chapter_id: int | None = None
+    subchapter_id: int | None = None
     question_text: str
+    language_translation: str | None = None
+    created_by: str | None = None  # adminApi.create sends this
+    modified_by: str | None = None  # adminApi.update sends this
 
-class QuestionOut(QuestionCreate):
+
+class QuestionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    question_id: int
 
+    question_id: int
+    parent_id: int | None = None
+    level_no: int | None = None
+    class_id: int | None = None
+    subject_id: int | None = None
+    medium_id: int | None = None
+    chapter_id: int | None = None
+    subchapter_id: int | None = None
+    question_text: str
+    language_translation: str | None = None
+    created_by: str | None = None
+    created_on: datetime | None = None
+    modified_by: str | None = None
+    modified_on: datetime | None = None
+
+
+class QuestionImportRow(BaseModel):
+    row: int | None = None  # Excel row number, used in error messages
+    question_text: str | None = None
+    language_translation: str | None = None
+
+
+class QuestionImportRequest(BaseModel):
+    chapter_id: int
+    subchapter_id: int
+    class_id: int | None = None
+    subject_id: int | None = None
+    medium_id: int | None = None
+    items: list[QuestionImportRow]
+    created_by: str | None = None  # adminApi.create sends this
+    modified_by: str | None = None
+
+
+class QuestionImportError(BaseModel):
+    row: int
+    reason: str
+
+
+class QuestionImportResult(BaseModel):
+    created: int
+    errors: list[QuestionImportError] = []
+
+class QuestionListOut(QuestionOut):
+    display_text: str | None = None      # translated text if it exists, else English
+    has_translation: bool = False
 
 # ---------- LOV ----------
 class LOVCreate(BaseModel):
@@ -197,3 +251,17 @@ class SubchapterTranslationOut(BaseModel):
     modified_by: Optional[str] = None
     modified_on: Optional[datetime] = None
      
+
+class QuestionTranslationIn(BaseModel):
+    question_text: str
+    modified_by: str | None = None
+
+class QuestionTranslationOut(BaseModel):
+    question_id: int
+    lang_code: str
+    question_text: str
+    created_by: str | None = None
+    created_on: datetime | None = None
+    modified_by: str | None = None
+    modified_on: datetime | None = None
+    model_config = ConfigDict(from_attributes=True)    

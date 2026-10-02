@@ -128,8 +128,17 @@ def list_chapters(
     subject_lov_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Left-menu use case: pass board/class/subject to filter to the student's own list."""
-    return db_get_chapters(db, board_lov_id, class_lov_id, subject_lov_id)
+    chapters = db_get_chapters(db, board_lov_id, class_lov_id, subject_lov_id)
+    ta = {
+        t.chapter_id: t.title
+        for t in db.query(ChapterTranslation).filter(ChapterTranslation.lang_code == "ta").all()
+    }
+    out = []
+    for c in chapters:
+        item = ChapterOut.model_validate(c)
+        item.title_ta = ta.get(c.chapter_id) or item.title_ta
+        out.append(item)
+    return out
 
 
 @router.get("/{chapter_id}", response_model=ChapterWithSubchapters)
