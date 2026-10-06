@@ -1,47 +1,50 @@
 """
-English -> target language translation using Claude.
+English -> Tamil translation using free, open-source tools (no API key, no cost).
 
-- translate_text(db, text, language_code) is the reusable function (used by
-  questions.py when a question is created).
-- POST /translate exposes it as an endpoint.
-- Matching glossary words are sent to the model so maths terms stay consistent.
-- Results are cached in Redis. The key includes the glossary version, so editing
-  the glossary automatically retires old cached translations.
+How it works
+- The whole question is translated as one sentence, so the translator sees the
+  full context (much better Tamil than translating small pieces).
+- Formulas written between $...$ are swapped for markers like [1], [2] before
+  translating, then put back exactly as typed. If a marker is lost or changed,
+  that attempt is not trusted and the slower piece-by-piece method is used.
+- Google Translate (via deep-translator) is tried first; MyMemory is the backup
+  if Google refuses (for example when it asks you to slow down).
+- Results are cached in Redis for 30 days.
 
-Env vars:
-  ANTHROPIC_API_KEY   required
-  ANTHROPIC_MODEL     optional, default claude-sonnet-5-5
+Install once (in the main venv):
+  pip install deep-translator
 """
 import hashlib
 import logging
-import os
 import re
-from typing import Dict, Tuple
+import time
+from typing import Callable, Dict, List, Tuple
 
-import anthropic
+from deep_translator import GoogleTranslator, MyMemoryTranslator
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db  # <-- adjust to your project
-from app.models import GlossaryTerm, GlossaryTermTranslation  # <-- adjust path
-from app.redis_client import cache_get_json, cache_set_json, get_version  # <-- adjust path
+from app.redis_client import cache_get_json, cache_set_json  # <-- adjust path
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/translate", tags=["translate"])
 
-MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 days
 
-# Add a line here when you add a language.
-LANGUAGE_NAMES: Dict[str, str] = {
-    "ta": "Tamil",
-    # "hi": "Hindi",
-    # "te": "Telugu",
+# Add a line here when you add a language: code -> (name, Google code, MyMemory code)
+LANGUAGES: Dict[str, Tuple[str, str, str]] = {
+    "ta": ("Tamil", "ta", "ta-IN"),
+    # "hi": ("Hindi", "hi", "hi-IN"),
+    # "te": ("Telugu", "te", "te-IN"),
 }
 
-_client = None
+# Anything between two dollar signs is a formula and stays exactly as typed.
+_FORMULA = re.compile(r"(\$[^$]+\$)")
+# A marker such as [3] (the translator may add spaces or use full-width brackets).
+_MARKER = re.compile(r"[\[［]\s*(\d+)\s*[\]］]")
 
 
 class TranslationError(Exception):
@@ -50,51 +53,112 @@ class TranslationError(Exception):
         self.status_code = status_code
 
 
-def _llm() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
-    return _client
+# ------------------------------------------------------------ the two translators
+# Each "call" takes plain English text and returns the translated text.
+
+def _with_retry(fn: Callable[[], str], tries: int = 3) -> str:
+    for attempt in range(tries):
+        try:
+            return fn()
+        except Exception:
+            if attempt == tries - 1:
+                raise
+            time.sleep(1.5 * (attempt + 1))  # wait a little, then try again
+    return ""
 
 
-def _glossary_matches(db: Session, text: str, language_code: str) -> Dict[str, str]:
-    """Single-word glossary terms found in the text, with their translations."""
-    words = {w.lower() for w in re.findall(r"[A-Za-z]+", text)}
-    if not words:
-        return {}
-    rows = (
-        db.query(GlossaryTerm.english_word, GlossaryTermTranslation.translated_word)
-        .join(GlossaryTermTranslation, GlossaryTermTranslation.term_id == GlossaryTerm.id)
-        .filter(
-            GlossaryTerm.is_active.is_(True),
-            GlossaryTermTranslation.language_code == language_code,
-            GlossaryTerm.english_word.in_(words),
-        )
-        .all()
-    )
-    return {english: translated for english, translated in rows}
+def _google_call(language_code: str) -> Callable[[str], str]:
+    translator = GoogleTranslator(source="en", target=LANGUAGES[language_code][1])
+
+    def call(text: str) -> str:
+        return _with_retry(lambda: translator.translate(text) or text)
+
+    return call
 
 
-def _build_system_prompt(language: str, glossary: Dict[str, str]) -> str:
-    prompt = (
-        f"You translate school mathematics questions from English into {language}.\n"
-        "Rules:\n"
-        "- Keep all numbers, variables, symbols, units, and math expressions "
-        "(including anything inside $...$ or LaTeX) exactly as written.\n"
-        "- Keep the meaning and the question format; do not solve or explain the question.\n"
-        "- Use natural wording a school student would understand.\n"
-        "- Reply with the translation only, no notes or quotation marks."
-    )
-    if glossary:
-        lines = "\n".join(f"- {en} = {tr}" for en, tr in sorted(glossary.items()))
-        prompt += f"\n\nUse exactly these translations for these terms:\n{lines}"
-    return prompt
+def _sentence_chunks(text: str, max_len: int = 450) -> List[str]:
+    """MyMemory accepts about 500 characters per request, so long text is split by sentence."""
+    chunks, cur = [], ""
+    for part in re.split(r"(?<=[.?!])\s+", text):
+        if cur and len(cur) + 1 + len(part) > max_len:
+            chunks.append(cur)
+            cur = part
+        else:
+            cur = f"{cur} {part}".strip()
+    if cur:
+        chunks.append(cur)
+    return chunks
 
+
+def _mymemory_call(language_code: str) -> Callable[[str], str]:
+    translator = MyMemoryTranslator(source="en-US", target=LANGUAGES[language_code][2])
+
+    def call(text: str) -> str:
+        out = []
+        for chunk in _sentence_chunks(text):
+            out.append(_with_retry(lambda c=chunk: translator.translate(c) or c))
+            time.sleep(0.3)
+        return " ".join(out)
+
+    return call
+
+
+# ------------------------------------------------------------ formulas in and out
+
+def _mask(text: str) -> Tuple[str, List[str]]:
+    """Replace each $formula$ with a numbered marker."""
+    formulas: List[str] = []
+
+    def swap(match: re.Match) -> str:
+        formulas.append(match.group(0))
+        return f" [{len(formulas)}] "
+
+    masked = _FORMULA.sub(swap, text)
+    return re.sub(r"[ \t]{2,}", " ", masked).strip(), formulas
+
+
+def _unmask(translated: str, formulas: List[str]) -> str:
+    """Put the formulas back. Raises ValueError if any marker was lost, changed or repeated."""
+    found = [int(n) for n in _MARKER.findall(translated)]
+    if sorted(found) != list(range(1, len(formulas) + 1)):
+        raise ValueError("formula markers were changed by the translator")
+    result = _MARKER.sub(lambda m: formulas[int(m.group(1)) - 1], translated)
+    result = re.sub(r"\s+([,.;:?!])", r"\1", result)  # no space before punctuation
+    return re.sub(r"[ \t]{2,}", " ", result).strip()
+
+
+def _piece_by_piece(text: str, call: Callable[[str], str]) -> str:
+    """Slower fallback: translate only the words between formulas, one piece at a time."""
+    parts = _FORMULA.split(text)
+    for i, part in enumerate(parts):
+        if _FORMULA.fullmatch(part) or not re.search(r"[A-Za-z]", part):
+            continue
+        lead = part[: len(part) - len(part.lstrip())]
+        trail = part[len(part.rstrip()):]
+        parts[i] = f"{lead}{call(part.strip()).strip()}{trail}"
+        time.sleep(0.3)
+    return "".join(parts)
+
+
+def _translate_with(text: str, call: Callable[[str], str]) -> str:
+    masked, formulas = _mask(text)
+    if not formulas:
+        return call(text).strip()
+    # If the question itself contains text like "[1]", markers would be confused.
+    if re.search(r"\[\s*\d+\s*\]", _FORMULA.sub("", text)):
+        return _piece_by_piece(text, call).strip()
+    try:
+        return _unmask(call(masked), formulas)
+    except ValueError as exc:
+        logger.warning("%s; translating piece by piece instead", exc)
+        return _piece_by_piece(text, call).strip()
+
+
+# ------------------------------------------------------------ public function
 
 def translate_text(db: Session, text: str, language_code: str = "ta") -> Tuple[str, bool]:
     """Returns (translation, was_cached). Raises TranslationError on failure."""
-    language = LANGUAGE_NAMES.get(language_code)
-    if language is None:
+    if language_code not in LANGUAGES:
         raise TranslationError(f"Unsupported language: {language_code}", 400)
 
     text = (text or "").strip()
@@ -102,28 +166,23 @@ def translate_text(db: Session, text: str, language_code: str = "ta") -> Tuple[s
         raise TranslationError("Text is empty", 400)
 
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    key = f"translate:g{get_version('glossary')}:{language_code}:{digest}"
+    key = f"translate:v2:{language_code}:{digest}"  # v2: older, lower-quality results are not reused
 
     cached = cache_get_json(key)
     if cached is not None:
         return cached, True
 
-    glossary = _glossary_matches(db, text, language_code)
+    translation = ""
+    for name, make_call in (("google", _google_call), ("mymemory", _mymemory_call)):
+        try:
+            translation = _translate_with(text, make_call(language_code))
+            if translation:
+                break
+        except Exception as exc:
+            logger.warning("%s translate failed (%s)", name, exc)
 
-    try:
-        response = _llm().messages.create(
-            model=MODEL,
-            max_tokens=1500,
-            system=_build_system_prompt(language, glossary),
-            messages=[{"role": "user", "content": text}],
-        )
-    except anthropic.APIError as exc:
-        logger.error("translation failed: %s", exc)
-        raise TranslationError("Translation service unavailable")
-
-    translation = "".join(b.text for b in response.content if b.type == "text").strip()
     if not translation:
-        raise TranslationError("Empty translation returned")
+        raise TranslationError("Translation service unavailable")
 
     cache_set_json(key, translation, CACHE_TTL_SECONDS)
     return translation, False

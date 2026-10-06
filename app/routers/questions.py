@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
+from sqlalchemy import inspect as sa_inspect
 from app import models, schemas
 from app.database import get_db
 from app.models import Question, QuestionTranslation
@@ -48,6 +49,12 @@ def _clean_exercise(value) -> str | None:
     return (value or "").strip() or None
 
 
+def _only_columns(data: dict) -> dict:
+    """Keep only keys that are real columns on Question, so extra fields cannot crash a save."""
+    cols = {a.key for a in sa_inspect(models.Question).mapper.column_attrs}
+    return {k: v for k, v in data.items() if k in cols}
+
+
 def _next_sort_order(db: Session, chapter_id, exercise_no, parent_id) -> int:
     """Next free position among questions with the same chapter, exercise and parent."""
     query = db.query(func.coalesce(func.max(models.Question.sort_order), 0)).filter(
@@ -56,9 +63,7 @@ def _next_sort_order(db: Session, chapter_id, exercise_no, parent_id) -> int:
     query = query.filter(
         models.Question.exercise_no.is_(None) if exercise_no is None else models.Question.exercise_no == exercise_no
     )
-    query = query.filter(
-        models.Question.parent_id.is_(None) if parent_id is None else models.Question.parent_id == parent_id
-    )
+     
     return (query.scalar() or 0) + 1
 
 
@@ -130,7 +135,7 @@ def create_question(question: schemas.QuestionCreate, db: Session = Depends(get_
         data["sort_order"] = _next_sort_order(
             db, data.get("chapter_id"), data["exercise_no"], data.get("parent_id")
         )
-    db_question = models.Question(**data)
+    db_question = models.Question(**_only_columns(data))
     db.add(db_question)
     _commit(db)
     db.refresh(db_question)
@@ -155,7 +160,11 @@ def list_questions(
     if chapter_id is not None:
         query = query.filter(models.Question.chapter_id == chapter_id)
     return (
-        query.order_by(models.Question.sort_order, models.Question.question_id)
+        query.order_by(
+            models.Question.exercise_no,
+            models.Question.sort_order,
+            models.Question.question_id,
+        )
         .offset(skip)
         .limit(limit)
         .all()
@@ -163,7 +172,6 @@ def list_questions(
 
 
 # Question list for one subchapter, with the translated text for `lang`.
-# This was a second list_questions on the same path; it now has its own path.
 # It must stay ABOVE "/{question_id}" so "by-subchapter" is not read as an id.
 @router.get("/by-subchapter", response_model=list[QuestionListOut])
 def list_questions_by_subchapter(subchapter_id: int, lang: str = "en", db: Session = Depends(get_db)):
@@ -195,9 +203,10 @@ def list_questions_by_subchapter(subchapter_id: int, lang: str = "en", db: Sessi
 # /admin/questions/bulk/ , so this avoids a 307 redirect.
 @router.post("/bulk/", response_model=schemas.QuestionImportResult, status_code=201)
 def import_questions(payload: schemas.QuestionImportRequest, db: Session = Depends(get_db)):
-    """Create many main questions in one subchapter (used by the Excel import).
+    """Create many main questions in one chapter (used by the Excel import).
 
-    Rows with a problem are skipped and reported back; valid rows are saved.
+    Each row carries its own exercise number. Rows with a problem are skipped
+    and reported back; valid rows are saved.
     """
     who = payload.created_by or payload.modified_by
     created = 0
@@ -209,27 +218,30 @@ def import_questions(payload: schemas.QuestionImportRequest, db: Session = Depen
         if not text:
             errors.append({"row": row.row or position, "reason": "Question is empty"})
             continue
+
         exercise = _clean_exercise(row.exercise_no)
         key = (payload.chapter_id, exercise)
         if key in next_order:
             next_order[key] += 1
         else:
             next_order[key] = _next_sort_order(db, payload.chapter_id, exercise, None)
+
         db.add(
             models.Question(
-                parent_id=None,
-                level_no=MAIN_QUESTION_LEVEL,
-                exercise_no=exercise,
-                sort_order=next_order[key],
-                class_id=payload.class_id,
-                subject_id=payload.subject_id,
-                medium_id=payload.medium_id,
-                chapter_id=payload.chapter_id,
-                subchapter_id=payload.subchapter_id,
-                question_text=text,
-                language_translation=(row.language_translation or "").strip() or None,
-                created_by=who,
-                modified_by=payload.modified_by or who,
+                **_only_columns(
+                    dict( 
+                        exercise_no=exercise,
+                        sort_order=next_order[key],
+                        class_id=payload.class_id,
+                        subject_id=payload.subject_id,
+                        medium_id=payload.medium_id,
+                        chapter_id=payload.chapter_id, 
+                        question_text=text,
+                        language_translation=(row.language_translation or "").strip() or None,
+                        created_by=who,
+                        modified_by=payload.modified_by or who,
+                    )
+                )
             )
         )
         created += 1
@@ -258,7 +270,7 @@ def update_question(question_id: int, question: schemas.QuestionCreate, db: Sess
     if data.get("parent_id") == question_id:
         raise HTTPException(422, "A question cannot be its own parent")
     _set_level(db, data)
-    for field, value in data.items():
+    for field, value in _only_columns(data).items():
         setattr(db_question, field, value)
     _commit(db)
     db.refresh(db_question)

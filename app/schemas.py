@@ -1,7 +1,7 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import Float
-from datetime import datetime
+from datetime import datetime 
 
 
 # ---------- UserRole ----------
@@ -60,18 +60,18 @@ class UserOut(BaseModel):
     modified_on: Optional[datetime] = None  
 
 # ---------- Question ----------
-class QuestionCreate(BaseModel):
-    parent_id: int | None = None
-    level_no: int | None = None  # worked out by the API when left empty
+class QuestionCreate(BaseModel):   
     class_id: int | None = None
     subject_id: int | None = None
     medium_id: int | None = None
-    chapter_id: int | None = None
-    subchapter_id: int | None = None
+    chapter_id: int | None = None 
     question_text: str
     language_translation: str | None = None
-    created_by: str | None = None  # adminApi.create sends this
-    modified_by: str | None = None  # adminApi.update sends this
+    created_by: str | None = None   
+    modified_by: str | None = None    
+    exercise_no:str | None = None
+    sort_order: int | None = None
+    
 
 
 class QuestionOut(BaseModel):
@@ -91,24 +91,26 @@ class QuestionOut(BaseModel):
     created_on: datetime | None = None
     modified_by: str | None = None
     modified_on: datetime | None = None
+    exercise_no:str | None = None
+    sort_order: int | None = None
 
 
 class QuestionImportRow(BaseModel):
-    row: int | None = None  # Excel row number, used in error messages
+    row: int | None = None
     question_text: str | None = None
     language_translation: str | None = None
-
+    exercise_no: str | None = None        # add this
 
 class QuestionImportRequest(BaseModel):
-    chapter_id: int
-    subchapter_id: int
+    chapter_id: int     
     class_id: int | None = None
     subject_id: int | None = None
     medium_id: int | None = None
     items: list[QuestionImportRow]
-    created_by: str | None = None  # adminApi.create sends this
+    created_by: str | None = None
     modified_by: str | None = None
 
+ 
 
 class QuestionImportError(BaseModel):
     row: int

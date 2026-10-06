@@ -22,6 +22,7 @@ _client = redis.Redis.from_url(
     decode_responses=True,
     socket_connect_timeout=1,
     socket_timeout=1,
+    protocol=2,
 )
 
 
