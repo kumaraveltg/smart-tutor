@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from app.routers import auth, chapter, user_roles, users, lov, questions, answers,subchapter,glossary,translate  
 from fastapi.middleware.cors import CORSMiddleware  
+from fastapi.staticfiles import StaticFiles
+from app import image_service as imgs
+from app.routers import question_images
 
 
 app = FastAPI(title="SmartTutor API")
@@ -15,6 +18,8 @@ app.include_router(chapter.router)
 app.include_router(subchapter.router) 
 app.include_router(glossary.router)
 app.include_router(translate.router)  
+app.include_router(question_images.router)
+app.mount("/images", StaticFiles(directory=imgs.IMAGE_BASE_PATH), name="images")
 
 @app.get("/")
 def root():

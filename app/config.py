@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     postgres_port: int = 5433
     postgres_db: str
     postgres_schema: str = "smarttutor"
+    image_base_path: str = r"E:\smart-tutor\images"
 
     class Config:
         env_file = ".env"

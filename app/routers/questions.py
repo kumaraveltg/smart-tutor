@@ -7,10 +7,18 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from sqlalchemy import inspect as sa_inspect
 from app import models, schemas
+from app import image_service as imgs  # IMAGES
 from app.database import get_db
 from app.models import Question, QuestionTranslation
 from app.schemas import QuestionTranslationIn, QuestionTranslationOut, QuestionOut, QuestionListOut
 from app.routers.translate import translate_text  # <-- adjust path if translate.py lives elsewhere
+from app.routers.question_images import (  # IMAGES
+    add_imported_images,
+    delete_question_images,
+    folder_from_ids,
+    move_question_images,
+    question_folder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +215,11 @@ def import_questions(payload: schemas.QuestionImportRequest, db: Session = Depen
 
     Each row carries its own exercise number. Rows with a problem are skipped
     and reported back; valid rows are saved.
+
+    IMAGES: an optional `images` value per row (file names separated by commas)
+    is saved as image paths. Only names are stored, no file is copied. If a file
+    is not in the images folder the question is still saved and a note is added
+    to `errors` ("Saved, ...").
     """
     who = payload.created_by or payload.modified_by
     created = 0
@@ -226,25 +239,32 @@ def import_questions(payload: schemas.QuestionImportRequest, db: Session = Depen
         else:
             next_order[key] = _next_sort_order(db, payload.chapter_id, exercise, None)
 
-        db.add(
-            models.Question(
-                **_only_columns(
-                    dict( 
-                        exercise_no=exercise,
-                        sort_order=next_order[key],
-                        class_id=payload.class_id,
-                        subject_id=payload.subject_id,
-                        medium_id=payload.medium_id,
-                        chapter_id=payload.chapter_id, 
-                        question_text=text,
-                        language_translation=(row.language_translation or "").strip() or None,
-                        created_by=who,
-                        modified_by=payload.modified_by or who,
-                    )
+        new_question = models.Question(
+            **_only_columns(
+                dict(
+                    exercise_no=exercise,
+                    sort_order=next_order[key],
+                    class_id=payload.class_id,
+                    subject_id=payload.subject_id,
+                    medium_id=payload.medium_id,
+                    chapter_id=payload.chapter_id,
+                    question_text=text,
+                    language_translation=(row.language_translation or "").strip() or None,
+                    created_by=who,
+                    modified_by=payload.modified_by or who,
                 )
             )
         )
+        db.add(new_question)
         created += 1
+
+        # IMAGES: link the image names from the Excel 'images' column
+        image_cell = getattr(row, "images", None)
+        if image_cell:
+            db.flush()  # gives new_question.question_id
+            folder = folder_from_ids(payload.class_id, payload.subject_id, payload.chapter_id, exercise)
+            for warning in add_imported_images(db, new_question.question_id, folder, image_cell):
+                errors.append({"row": row.row or position, "reason": f"Saved, {warning}"})
 
     _commit(db)
     return {"created": created, "errors": errors}
@@ -270,9 +290,31 @@ def update_question(question_id: int, question: schemas.QuestionCreate, db: Sess
     if data.get("parent_id") == question_id:
         raise HTTPException(422, "A question cannot be its own parent")
     _set_level(db, data)
+
+    old_folder = question_folder(db_question)  # IMAGES: folder before the edit
     for field, value in _only_columns(data).items():
         setattr(db_question, field, value)
-    _commit(db)
+
+    # IMAGES: class/subject/chapter/exercise changed -> move the image files too
+    new_folder = question_folder(db_question)
+    moved_old: list[str] = []
+    moved_new: list[str] = []
+    if new_folder != old_folder:
+        try:
+            moved_old, moved_new = move_question_images(db, question_id, new_folder)
+        except HTTPException:
+            db.rollback()  # the edit is cancelled, nothing was moved
+            raise
+
+    try:
+        _commit(db)
+    except HTTPException:
+        if moved_new:  # DB save failed: put the files back where they were
+            try:
+                imgs.move_images(moved_new, old_folder)
+            except imgs.ImageError:
+                logger.error("could not move images back for question %s", question_id)
+        raise
     db.refresh(db_question)
     return db_question
 
@@ -285,11 +327,14 @@ def delete_question(question_id: int, db: Session = Depends(get_db)):
     try:
         # translations belong to the question, so remove them with it
         db.query(QuestionTranslation).filter(QuestionTranslation.question_id == question_id).delete()
+        image_paths = delete_question_images(db, question_id)  # IMAGES: rows now, files after commit
         db.delete(db_question)
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "Delete its sub-questions and answers first")
+    for path in image_paths:  # IMAGES
+        imgs.delete_file(path)
 
 
 # ---------------------------------------------------------------- translation routes
