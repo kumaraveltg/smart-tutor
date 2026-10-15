@@ -3,6 +3,7 @@ from sqlalchemy import Column, DateTime, Float, Integer, String, Text, Boolean, 
 from sqlalchemy.orm import Mapped, mapped_column, relationship 
 from app.database import Base
 from datetime import datetime, timezone 
+from sqlalchemy.dialects.postgresql import JSONB
 
 class UserRole(Base):
     __tablename__ = "st_userroles"
@@ -71,14 +72,59 @@ class LOV(Base):
 class Answer(Base):
     __tablename__ = "st_answers"
     __table_args__ = {"schema": "smarttutor"}
-    answer_id = Column(Integer, primary_key=True)
-    question_id = Column(Integer, ForeignKey("smarttutor.st_questions.question_id"), nullable=False)
-    answer_text = Column(Text, nullable=False)
-    is_correct = Column(Boolean)
-    created_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
-    created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
-    modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
-    modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    answer_id = Column(Integer, primary_key=True, index=True)
+    question_id = Column(Integer, ForeignKey("smarttutor.st_questions.question_id"),
+                         nullable=False, index=True)
+    teacher_id = Column(Integer, ForeignKey("smarttutor.users.id"),
+                        nullable=False, index=True)  # use your users table name
+    step_count = Column(Integer, nullable=False, default=0)
+    final_answer = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    steps = relationship(
+        "AnswerStep", back_populates="answer",
+        cascade="all, delete-orphan", order_by="AnswerStep.step_no"
+    )
+
+
+class AnswerStep(Base):
+    __tablename__ = "st_answer_steps"
+    __table_args__ = (
+        UniqueConstraint("answer_id", "step_no", name="uq_answer_step_no"),
+        {"schema": "smarttutor"},
+    )
+
+    step_id = Column(Integer, primary_key=True, index=True)
+    answer_id = Column(Integer, ForeignKey("smarttutor.st_answers.answer_id",
+                                           ondelete="CASCADE"), nullable=False)
+    step_no = Column(Integer, nullable=False)
+    step_text = Column(Text, nullable=False)
+    hint_text = Column(Text, nullable=True)
+
+    answer = relationship("Answer", back_populates="steps")
+    translations = relationship(
+        "AnswerStepTranslation", back_populates="step",
+        cascade="all, delete-orphan"
+    )
+
+
+class AnswerStepTranslation(Base):
+    __tablename__ = "st_answer_step_translations"
+    __table_args__ = (
+        UniqueConstraint("step_id", "language_code", name="uq_step_lang"),
+        {"schema": "smarttutor"},
+    )
+
+    id = Column(Integer, primary_key=True)
+    step_id = Column(Integer, ForeignKey("smarttutor.st_answer_steps.step_id",
+                                         ondelete="CASCADE"), nullable=False)
+    language_code = Column(String(10), nullable=False)
+    step_text = Column(Text, nullable=True)
+    hint_text = Column(Text, nullable=True)
+
+    step = relationship("AnswerStep", back_populates="translations")
 
 class Chapter(Base):
     __tablename__ = "st_chapter"

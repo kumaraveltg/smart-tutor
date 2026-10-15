@@ -139,14 +139,64 @@ class LOVOut(LOVCreate):
 
 
 # ---------- Answer ----------
-class AnswerCreate(BaseModel):
-    question_id: int
-    answer_text: str
-    is_correct: bool | None = None
+class TranslationIn(BaseModel):
+    language_code: str
+    step_text: Optional[str] = None
+    hint_text: Optional[str] = None
 
-class AnswerOut(AnswerCreate):
-    model_config = ConfigDict(from_attributes=True)
+
+class StepIn(BaseModel):
+    step_no: int
+    step_text: str
+    hint_text: Optional[str] = None
+    translations: List[TranslationIn] = []   # optional, edited by the teacher
+
+
+class AnswerIn(BaseModel):
+    question_id: int
+    final_answer: Optional[str] = None
+    steps: List[StepIn]
+
+
+class TranslateStepIn(BaseModel):
+    step_text: Optional[str] = None
+    hint_text: Optional[str] = None
+
+
+class TranslatePreviewIn(BaseModel):
+    steps: List[TranslateStepIn]
+
+
+class TranslationOut(BaseModel):
+    language_code: str
+    step_text: Optional[str] = None
+    hint_text: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class StepOut(BaseModel):
+    step_id: int
+    step_no: int
+    step_text: str
+    hint_text: Optional[str] = None
+    translations: List[TranslationOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class AnswerOut(BaseModel):
     answer_id: int
+    question_id: int
+    teacher_id: int
+    step_count: int
+    final_answer: Optional[str] = None
+    steps: List[StepOut] = []
+
+    class Config:
+        from_attributes = True
 
 
 
