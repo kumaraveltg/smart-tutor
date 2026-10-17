@@ -141,14 +141,14 @@ class LOVOut(LOVCreate):
 # ---------- Answer ----------
 class TranslationIn(BaseModel):
     language_code: str
-    step_text: Optional[str] = None
-    hint_text: Optional[str] = None
+    step_text: Optional[str] = None 
 
 
 class StepIn(BaseModel):
     step_no: int
-    step_text: str
-    hint_text: Optional[str] = None
+    step_text: str 
+    images: List[str] = []
+    graph: Optional[dict] = None
     translations: List[TranslationIn] = []   # optional, edited by the teacher
 
 
@@ -159,12 +159,12 @@ class AnswerIn(BaseModel):
 
 
 class TranslateStepIn(BaseModel):
-    step_text: Optional[str] = None
-    hint_text: Optional[str] = None
+    step_text: Optional[str] = None 
 
 
 class TranslatePreviewIn(BaseModel):
     steps: List[TranslateStepIn]
+    languages: Optional[List[str]] = None  
 
 
 class TranslationOut(BaseModel):
@@ -194,11 +194,23 @@ class AnswerOut(BaseModel):
     step_count: int
     final_answer: Optional[str] = None
     steps: List[StepOut] = []
+    images: List[str] = []
+    graph: Optional[dict] = None
 
     class Config:
         from_attributes = True
 
+class StepImportRow(BaseModel):
+    row: Optional[int] = None
+    question_id: Optional[int] = None
+    step_text: Optional[str] = None
+    translations: Dict[str, str] = {}
 
+
+class AnswerImportIn(BaseModel):
+    chapter_id: int
+    auto_translate: bool = False
+    items: List[StepImportRow]
 
 # ---------- Chapter ----------
 

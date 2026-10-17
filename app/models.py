@@ -68,7 +68,6 @@ class LOV(Base):
     value: Mapped[str] = mapped_column(String(255), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-
 class Answer(Base):
     __tablename__ = "st_answers"
     __table_args__ = {"schema": "smarttutor"}
@@ -76,8 +75,8 @@ class Answer(Base):
     answer_id = Column(Integer, primary_key=True, index=True)
     question_id = Column(Integer, ForeignKey("smarttutor.st_questions.question_id"),
                          nullable=False, index=True)
-    teacher_id = Column(Integer, ForeignKey("smarttutor.users.id"),
-                        nullable=False, index=True)  # use your users table name
+    teacher_id = Column(Integer, ForeignKey("smarttutor.st_users.user_id"),
+                        nullable=False, index=True)
     step_count = Column(Integer, nullable=False, default=0)
     final_answer = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -101,7 +100,8 @@ class AnswerStep(Base):
                                            ondelete="CASCADE"), nullable=False)
     step_no = Column(Integer, nullable=False)
     step_text = Column(Text, nullable=False)
-    hint_text = Column(Text, nullable=True)
+    images = Column(JSONB, nullable=False, default=list, server_default="[]")
+    graph = Column(JSONB, nullable=True)
 
     answer = relationship("Answer", back_populates="steps")
     translations = relationship(

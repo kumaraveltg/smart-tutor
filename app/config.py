@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     postgres_db: str
     postgres_schema: str = "smarttutor"
     image_base_path: str = r"E:\smart-tutor\images"
+    ollama_url: str = "http://localhost:11434"
+    chroma_path: str = "chroma_data"
 
     class Config:
         env_file = ".env"
