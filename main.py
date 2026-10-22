@@ -5,8 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from app import image_service as imgs
 from app.routers import (
     auth, chapter, user_roles, users, lov, questions, answers,
-    subchapter, glossary, translate, question_images,
-)
+    subchapter, glossary, translate, question_images,student,practice
+)  
 
 app = FastAPI(title="SmartTutor API")
 
@@ -28,6 +28,8 @@ app.include_router(answers.router)
 app.include_router(glossary.router)
 app.include_router(translate.router)
 app.include_router(question_images.router)
+app.include_router(student.router)
+app.include_router(practice.router)
 
 app.mount("/images", StaticFiles(directory=imgs.IMAGE_BASE_PATH), name="images")
 

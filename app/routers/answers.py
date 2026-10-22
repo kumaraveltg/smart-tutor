@@ -308,7 +308,7 @@ def delete_answer(answer_id: int,background: BackgroundTasks, db: Session = Depe
 # Trailing slash on purpose: adminApi.create('answers/bulk', ...) calls /admin/answers/bulk/
 @router.post("/bulk/", status_code=201)
 @router.post("/bulk", include_in_schema=False)
-def import_answers(data: AnswerImportIn, db: Session = Depends(get_db),
+def import_answers(data: AnswerImportIn,background: BackgroundTasks, db: Session = Depends(get_db),
                    user: models.User = Depends(get_current_user)):
     """Create one answer per question from Excel rows (one row = one step). No final answer needed."""
     require_teacher(user)
@@ -318,6 +318,7 @@ def import_answers(data: AnswerImportIn, db: Session = Depends(get_db),
     # group the rows by question, keeping the order of the file
     groups: dict = {}
     for pos, it in enumerate(data.items, start=2):        # Excel row 1 is the header
+        to_index = []
         row_no = it.row or pos
         text = (it.step_text or "").strip()
         if not it.question_id:
@@ -360,10 +361,13 @@ def import_answers(data: AnswerImportIn, db: Session = Depends(get_db),
                 db.add(ans)
                 db.flush()
                 _fill_steps(db, ans, steps, auto_translate=data.auto_translate)
+                to_index.append((ans.answer_id, ai_index.answer_to_docs(ans)))
             created += 1
         except Exception as exc:
             logger.warning("answer import failed for question %s: %s", qid, exc)
             errors.append({"row": first_row, "reason": "Could not save this answer"})
 
     db.commit()
+    for aid, docs in to_index:
+     background.add_task(ai_index.index_answer_docs, aid, docs)
     return {"created": created, "errors": errors}

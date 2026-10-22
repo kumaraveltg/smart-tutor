@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import GlossaryTerm, GlossaryTermTranslation
-from app.redis_client import bump_version, cache_delete, cache_get_json, cache_set_json
+from redis_client import bump_version, cache_delete, cache_get_json, cache_set_json
 
 GLOSSARY_TERMS_KEY = "glossary:terms"
 GLOSSARY_TTL_SECONDS = 3600

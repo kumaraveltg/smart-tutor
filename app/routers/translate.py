@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db  # <-- adjust to your project
-from app.redis_client import cache_get_json, cache_set_json  # <-- adjust path
+from redis_client import cache_get_json, cache_set_json  # <-- adjust path
 
 logger = logging.getLogger(__name__)
 

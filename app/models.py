@@ -1,5 +1,5 @@
 from typing import Optional
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, Boolean, ForeignKey,UniqueConstraint  
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, Boolean, ForeignKey,UniqueConstraint,Numeric,Date,func
 from sqlalchemy.orm import Mapped, mapped_column, relationship 
 from app.database import Base
 from datetime import datetime, timezone 
@@ -253,3 +253,85 @@ class GlossaryTermTranslation(Base):
     translated_word = Column(String(200), nullable=False)
 
     term = relationship("GlossaryTerm", back_populates="translations")
+
+
+SCHEMA = "smarttutor"
+
+
+class StudentProfile(Base):
+    """One row per student user: the class and medium chosen at registration."""
+    __tablename__ = "st_student_profile"
+    __table_args__ = {"schema": SCHEMA}
+
+    profile_id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, unique=True, index=True)  # users.id
+    mobile = Column(String(15), nullable=False, unique=True)  # 10 digits, kept for the later OTP step
+    class_id = Column(Integer, nullable=False)    # same ids used in st_questions.class_id
+    medium_id = Column(Integer, nullable=False)   # same ids used in st_questions.medium_id
+    board_id = Column(Integer, nullable=True)
+    school = Column(String(150), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class Plan(Base):
+    """Price list. Amount lives in the DB so you can change it without a deploy."""
+    __tablename__ = "st_plan"
+    __table_args__ = {"schema": SCHEMA}
+
+    plan_id = Column(Integer, primary_key=True)
+    name = Column(String(60), nullable=False)          # "Monthly", "Yearly"
+    amount = Column(Numeric(10, 2), nullable=False)    # in rupees
+    duration_days = Column(Integer, nullable=False)    # 30, 365
+    is_active = Column(Boolean, nullable=False, default=True)
+
+
+class Subscription(Base):
+    """One row per student. Access = free_override OR today <= max(trial_end, paid_until)."""
+    __tablename__ = "st_subscription"
+    __table_args__ = {"schema": SCHEMA}
+
+    sub_id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, unique=True, index=True)
+    trial_start = Column(Date, nullable=False)
+    trial_end = Column(Date, nullable=False)
+    paid_until = Column(Date, nullable=True)
+    plan_id = Column(Integer, nullable=True)
+    free_override = Column(Boolean, nullable=False, default=False)  # scholarship / waiver
+
+
+class Payment(Base):
+    __tablename__ = "st_payment"
+    __table_args__ = {"schema": SCHEMA}
+
+    payment_id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    plan_id = Column(Integer, nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
+    razorpay_order_id = Column(String(60), nullable=False, unique=True)
+    razorpay_payment_id = Column(String(60), nullable=True)
+    status = Column(String(20), nullable=False, default="created")  # created | paid | failed
+    created_at = Column(DateTime, server_default=func.now())
+    paid_at = Column(DateTime, nullable=True)
+
+
+class StudentSubject(Base):
+    """The subjects a student chose. Each subject has its own paid_until.
+    subject_id is an st_lov id (same as st_questions.subject_id)."""
+    __tablename__ = "st_student_subject"
+    __table_args__ = {"schema": SCHEMA}
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    subject_id = Column(Integer, nullable=False)
+    paid_until = Column(Date, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class PaymentItem(Base):
+    """Which subjects one payment covers (price per subject x number of rows)."""
+    __tablename__ = "st_payment_item"
+    __table_args__ = {"schema": SCHEMA}
+
+    item_id = Column(Integer, primary_key=True)
+    payment_id = Column(Integer, nullable=False, index=True)
+    subject_id = Column(Integer, nullable=False)
