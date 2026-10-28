@@ -9,6 +9,7 @@ from app.models import (
      StudentProfile, StudentSubject, Question,LOV,Chapter,QuestionTranslation,Answer,AnswerStep
     
 )
+from app.routers.student import ensure_subject_access
 
 # + your get_db, get_current_user and model imports, as in student.py
 
@@ -39,7 +40,8 @@ def _access(db, user, question_id):
         or (s.board_id and ch.board_lov_id != s.board_id)
     ):
         raise HTTPException(404, "Question not found")
-    return s, q
+    ensure_subject_access(db, user, ch.subject_lov_id)   # 402 once this subject's period has ended
+    return s, q 
 
 
 def _answers(db, question_id, method_id):

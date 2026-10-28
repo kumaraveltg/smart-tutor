@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import func
 
 import razorpay
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request,Query
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func, text
 from sqlalchemy import inspect as sa_inspect
@@ -117,6 +117,12 @@ def _load(db: Session, user_id: int):
     subjects = db.query(StudentSubject).filter_by(user_id=user_id).order_by(StudentSubject.subject_id).all()
     return sub, subjects
 
+def _next_period(today: date, prev_end: date, days: int) -> tuple[date, date]:
+    """Same rule as activate_payment: counts from the later of today / current end,
+    so paying early never loses days."""
+    base = max(today, prev_end)
+    start = today if today > prev_end else prev_end + timedelta(days=1)
+    return start, base + timedelta(days=days)
 
 def require_active_subscription(
     user=Depends(get_current_user), db: Session = Depends(get_db)
@@ -329,7 +335,7 @@ def me(user=Depends(get_current_user), db: Session = Depends(get_db)):
     profile = db.query(StudentProfile).filter_by(user_id=user.user_id).first()
     if profile is None:
         raise HTTPException(404, "Not a student")
-    sub, subjects = _load(db, user.id)
+    sub, subjects = _load(db, user.user_id)
     names = _subject_names(db)
 
     rows = []
@@ -349,12 +355,28 @@ def me(user=Depends(get_current_user), db: Session = Depends(get_db)):
     }
 
 
+def _class_rank(value):
+    return {"10": 0, "X": 0, "11": 1, "XI": 1, "12": 2, "XII": 2}.get(_normalize_class(value))
+
+
 @router.put("/profile")
 def update_profile(data: ProfileUpdateIn, user=Depends(get_current_user),
                    db: Session = Depends(get_db)):
-    profile = db.query(StudentProfile).filter_by(user_id=user.id).first()
+    profile = db.query(StudentProfile).filter_by(user_id=user.user_id).first()
     if profile is None:
         raise HTTPException(404, "Not a student")
+
+    new_val = _lov_exists(db, data.class_id, CLASS_LOV_TYPE)
+    old_val = _lov_exists(db, profile.class_id, CLASS_LOV_TYPE)
+    new_rank = _class_rank(new_val) if new_val else None
+    old_rank = _class_rank(old_val) if old_val else None
+    if new_rank is None:
+        raise HTTPException(400, "Invalid class")
+    if old_rank is not None and new_rank not in (old_rank, old_rank + 1):
+        raise HTTPException(400, "You can only stay in this class or move up to the next one")
+    if _lov_exists(db, data.medium_id, MEDIUM_LOV_TYPE) is None:
+        raise HTTPException(400, "Invalid medium")
+
     profile.class_id = data.class_id
     profile.medium_id = data.medium_id
     db.commit()
@@ -366,15 +388,16 @@ def plans(db: Session = Depends(get_db)):
     """amount = price per subject for that plan."""
     rows = db.query(Plan).filter_by(is_active=True).order_by(Plan.duration_days).all()
     return [{"plan_id": p.plan_id, "name": p.name, "amount": float(p.amount),
-             "duration_days": p.duration_days} for p in rows]
-
+             "duration_days": p.duration_days,
+             "months": p.duration_days // 30 if p.duration_days % 30 == 0 else None}
+            for p in rows]
 
 @router.post("/payments/order")
 def create_order(data: OrderIn, user=Depends(get_current_user), db: Session = Depends(get_db)):
     plan = db.query(Plan).filter_by(plan_id=data.plan_id, is_active=True).first()
     if plan is None:
         raise HTTPException(404, "Plan not found")
-    if db.query(Subscription).filter_by(user_id=user.id).first() is None:
+    if db.query(Subscription).filter_by(user_id=user.user_id).first() is None:
         raise HTTPException(404, "Not a student")
     for sid in data.subject_ids:
         if _lov_exists(db, sid, SUBJECT_LOV_TYPE) is None:
@@ -414,6 +437,82 @@ def verify_payment(data: VerifyIn, user=Depends(get_current_user), db: Session =
     activate_payment(db, payment, data.razorpay_payment_id)
     return {"message": "Payment successful"}
 
+@router.get("/subscriptions")
+def my_subscriptions(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """History: the free month, then each paid period per subject, newest first."""
+    sub, subjects = _load(db, user.user_id)
+    if sub is None:
+        raise HTTPException(404, "Not a student")
+    names = _subject_names(db)
+    today = date.today()
+
+    def status(start, end):
+        if start > today:
+            return "upcoming"
+        return "active" if end >= today else "expired"
+
+    rows = []
+    for ss in subjects:
+        rows.append({
+            "subject_id": ss.subject_id, "subject": names.get(ss.subject_id, str(ss.subject_id)),
+            "kind": "trial", "plan": None, "amount": None,
+            "start_date": sub.trial_start, "end_date": sub.trial_end,
+            "status": status(sub.trial_start, sub.trial_end),
+        })
+
+    plans_by_id = {p.plan_id: p for p in db.query(Plan).all()}
+    pays = (db.query(Payment).filter_by(user_id=user.user_id, status="paid")
+            .order_by(Payment.paid_at, Payment.payment_id).all())
+    items_by_pay: dict[int, list] = {}
+    if pays:
+        for it in db.query(PaymentItem).filter(
+                PaymentItem.payment_id.in_([p.payment_id for p in pays])).all():
+            items_by_pay.setdefault(it.payment_id, []).append(it)
+
+    prev_end = {ss.subject_id: sub.trial_end for ss in subjects}
+    for pay in pays:
+        plan = plans_by_id.get(pay.plan_id)
+        if plan is None:
+            continue
+        paid_day = (pay.paid_at or pay.created_at).date()
+        for it in items_by_pay.get(pay.payment_id, []):
+            start, end = _next_period(paid_day, prev_end.get(it.subject_id, sub.trial_end),
+                                      plan.duration_days)
+            prev_end[it.subject_id] = end
+            rows.append({
+                "subject_id": it.subject_id,
+                "subject": names.get(it.subject_id, str(it.subject_id)),
+                "kind": "paid", "plan": plan.name, "amount": float(plan.amount),
+                "start_date": start, "end_date": end, "status": status(start, end),
+            })
+
+    rows.sort(key=lambda r: (r["start_date"], r["kind"] == "paid"), reverse=True)
+    return rows
+
+
+@router.get("/payments/preview")
+def preview(plan_id: int, subject_ids: list[int] = Query(...),
+            user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Shows the start and end dates the student will get before paying."""
+    plan = db.query(Plan).filter_by(plan_id=plan_id, is_active=True).first()
+    if plan is None:
+        raise HTTPException(404, "Plan not found")
+    sub, subjects = _load(db, user.user_id)
+    if sub is None:
+        raise HTTPException(404, "Not a student")
+    by_subject = {s.subject_id: s for s in subjects}
+    names = _subject_names(db)
+    today = date.today()
+
+    items = []
+    for sid in dict.fromkeys(subject_ids):
+        if _lov_exists(db, sid, SUBJECT_LOV_TYPE) is None:
+            raise HTTPException(400, "Invalid subject")
+        ss = by_subject.get(sid)
+        prev = max(sub.trial_end, (ss.paid_until if ss and ss.paid_until else sub.trial_end))
+        start, end = _next_period(today, prev, plan.duration_days)
+        items.append({"subject": names.get(sid, str(sid)), "start_date": start, "end_date": end})
+    return {"total": float(plan.amount) * len(items), "items": items}
 
 @router.post("/payments/webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
