@@ -1,4 +1,5 @@
 # app/routers/auth.py
+from app.config import settings
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -13,13 +14,16 @@ from app import models
 from app.core.security import verify_password, create_access_token,hash_password
 from app.core.deps import get_current_user 
 from app.models import StudentProfile, StudentSubject, Subscription
+import ssl
+from fastapi import BackgroundTasks
+
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 logger = logging.getLogger(__name__)
 
-SECRET_KEY = os.getenv("SECRET_KEY", "change-me")   # ADJUST: use the same secret as your JWT settings
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+SECRET_KEY = settings.secret_key
+FRONTEND_URL = settings.frontend_url
 RESET_MAX_AGE = 30 * 60   # 30 minutes
 _serializer = URLSafeTimedSerializer(SECRET_KEY, salt="password-reset")
 
@@ -33,21 +37,28 @@ class ResetIn(BaseModel):
 
 
 def _send_email(to: str, link: str):
-    host = os.getenv("SMTP_HOST")
-    if not host:   # dev mode: no SMTP configured, print the link in the terminal
+    host = settings.smtp_host
+    if not host:
         logger.warning("PASSWORD RESET LINK for %s: %s", to, link)
         return
     msg = EmailMessage()
     msg["Subject"] = "Reset your SmartTutor password"
-    msg["From"] = os.getenv("SMTP_FROM", os.getenv("SMTP_USER"))
+    msg["From"] = settings.smtp_from or settings.smtp_user
     msg["To"] = to
     msg.set_content(f"Click to reset your password (valid for 30 minutes):\n\n{link}\n\n"
                     "If you did not request this, ignore this email.")
-    with smtplib.SMTP(host, int(os.getenv("SMTP_PORT", 587))) as s:
-        s.starttls()
-        s.login(os.getenv("SMTP_USER"), os.getenv("SMTP_PASSWORD"))
-        s.send_message(msg)
 
+    port = settings.smtp_port
+    ctx = ssl.create_default_context()
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, context=ctx, timeout=20) as s:
+            s.login(settings.smtp_user, settings.smtp_password)
+            s.send_message(msg)
+    else:
+        with smtplib.SMTP(host, port, timeout=20) as s:
+            s.starttls(context=ctx)
+            s.login(settings.smtp_user, settings.smtp_password)
+            s.send_message(msg)
 
 def build_user_payload(db: Session, user: models.User) -> dict:
     out = {
@@ -116,14 +127,16 @@ def login(
 
 
 @router.post("/forgot-password")
-def forgot_password(data: ForgotIn, db: Session = Depends(get_db)):
+def forgot_password(data: ForgotIn,bg: BackgroundTasks, db: Session = Depends(get_db)):
     email = data.email.strip().lower()
     user = db.query(models.User).filter(func.lower(models.User.email_id) == email).first()
     if user and user.is_active:
         # the last 10 chars of the current hash make the token single-use
         token = _serializer.dumps({"uid": user.user_id, "fp": user.password_hash[-10:]})
+        bg.add_task(_send_email, email, f"{FRONTEND_URL}/reset-password?token={token}")
         try:
             _send_email(email, f"{FRONTEND_URL}/reset-password?token={token}")
+            
         except Exception:
             logger.exception("Could not send reset email")
     # same answer whether or not the email exists, so accounts can't be probed

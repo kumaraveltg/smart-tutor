@@ -12,13 +12,14 @@ import re
 import shutil
 from pathlib import Path, PurePosixPath
 
+
 from PIL import Image
 
 # ---- settings -------------------------------------------------------------
 # Change this one value (or set the environment variable) per machine/server.
 from app.config import settings  # <-- adjust the module name if your Settings class lives elsewhere
 
-IMAGE_BASE_PATH = Path(settings.image_base_path)
+IMAGE_BASE_PATH = settings.image_base_path
 MAX_WIDTH = 800
 ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
