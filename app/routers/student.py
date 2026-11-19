@@ -4,6 +4,7 @@ import time
 from datetime import date, datetime, timedelta 
 from fastapi import HTTPException
 from sqlalchemy import func
+from typing import Optional 
 
 import razorpay
 from fastapi import APIRouter, Depends, HTTPException, Request,Query
@@ -19,11 +20,12 @@ from app.core.security import hash_password
 from app.config import settings
 from app.models import (
     User, UserRole, StudentProfile, StudentSubject, Plan, Subscription, Payment, PaymentItem,Question,LOV,Chapter,QuestionTranslation
-    
+ 
 )
 
 
 router = APIRouter(prefix="/student", tags=["student"])
+admin_router = APIRouter(prefix="/admin/students", tags=["admin-students"])
 logger = logging.getLogger("uvicorn.error")  # shows in the uvicorn terminal
 
 
@@ -71,6 +73,13 @@ def _lov_exists(db: Session, lov_id: int, lov_type) -> str | None:
 
 def _subject_names(db: Session) -> dict[int, str]:
     return {r.lov_id: r.value for r in _lov_rows(db, SUBJECT_LOV_TYPE)}
+
+def require_admin(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    role = db.query(UserRole).filter_by(role_id=user.role_id).first()   # use your real roles model
+    name = (role.role_name if role else "").strip().lower()
+    if name not in ("admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="admin_only")
+    return user
 
 
 # ---------------------------------------------------------------- subscription helpers
@@ -141,9 +150,9 @@ def ensure_subject_access(db: Session, user, subject_id: int):
     """Call inside a practice endpoint that works on one subject's questions:
         ensure_subject_access(db, user, question.subject_id)
     402 = this subject needs payment, 403 = the student never chose this subject."""
-    if db.query(StudentProfile).filter_by(user_id=user.id).first() is None:
+    if db.query(StudentProfile).filter_by(user_id=user.user_id).first() is None:
         return  # admin / teacher
-    sub, subjects = _load(db, user.id)
+    sub, subjects = _load(db, user.user_id)
     ss = next((s for s in subjects if s.subject_id == subject_id), None)
     if sub is None or ss is None:
         raise HTTPException(status_code=403, detail="subject_not_registered")
@@ -672,3 +681,44 @@ def practice_questions(
         }
         for q in qs
     ]
+
+class RegistrationIn(BaseModel):
+    class_lov_id: int
+    medium_lov_id: int
+    subject_lov_ids: list[int]
+    board_lov_id: Optional[int]
+
+# in your admin router (or student.py), admin-only
+@router.get("/admin/students/{user_id}/registration")
+def get_registration(user_id: int, db: Session = Depends(get_db), _=Depends(require_admin)):
+    p = db.query(StudentProfile).filter_by(user_id=user_id).first()
+    if not p:
+        return {"is_student": False}          # teacher/admin: the form hides the section
+    subs = db.query(StudentSubject).filter_by(user_id=user_id).all()
+    return {
+        "is_student": True,
+        "class_lov_id": p.class_id,
+        "medium_lov_id": p.medium_id,
+        "subject_lov_ids": [s.subject_id for s in subs],
+        "board_lov_id":p.board_id,
+    }
+
+@router.put("/admin/students/{user_id}/registration")
+def update_registration(user_id: int, body: RegistrationIn,
+                        db: Session = Depends(get_db), _=Depends(require_admin)):
+    p = db.query(StudentProfile).filter_by(user_id=user_id).first()
+    if not p:
+        raise HTTPException(404, "student_not_found")
+    p.class_lov_id = body.class_lov_id
+    p.medium_lov_id = body.medium_lov_id
+    p.board_lov_id = body.board_lov_id
+
+    wanted = set(body.subject_lov_ids)
+    current = {s.subject_id: s for s in db.query(StudentSubject).filter_by(user_id=user_id)}
+    for sid, row in current.items():
+        if sid not in wanted:
+            db.delete(row)
+    for sid in wanted - current.keys():
+        db.add(StudentSubject(user_id=user_id, subject_id=sid))  # copy any other fields your register code sets
+    db.commit()
+    return {"ok": True}

@@ -291,12 +291,12 @@ def update_question(question_id: int, question: schemas.QuestionCreate, db: Sess
         raise HTTPException(422, "A question cannot be its own parent")
     _set_level(db, data)
 
-    old_folder = question_folder(db_question)  # IMAGES: folder before the edit
+    old_folder = question_folder(db_question,db)  # IMAGES: folder before the edit
     for field, value in _only_columns(data).items():
         setattr(db_question, field, value)
 
     # IMAGES: class/subject/chapter/exercise changed -> move the image files too
-    new_folder = question_folder(db_question)
+    new_folder = question_folder(db_question,db)
     moved_old: list[str] = []
     moved_new: list[str] = []
     if new_folder != old_folder:

@@ -13,7 +13,7 @@ from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.orm import Session
 
 from app.database import Base, get_db           # <-- adjust if Base lives elsewhere
-from app.models import Question
+from app.models import Question,Chapter
 from app import image_service as imgs
 
 
@@ -34,8 +34,10 @@ def folder_from_ids(class_id, subject_id, chapter_id, exercise_no) -> str:
     return imgs.folder_for(f"c{class_id}", f"s{subject_id}", f"ch{chapter_id}", exercise_no)
 
 
-def question_folder(q) -> str:
-    return folder_from_ids(q.class_id, q.subject_id, q.chapter_id, q.exercise_no)
+def question_folder(q, db) -> str:
+    chapter = db.query(Chapter).filter_by(chapter_id=q.chapter_id).first()
+    subject_id = chapter.subject_lov_id if chapter else 0   # use the real column name
+    return folder_from_ids(q.class_id, subject_id, q.chapter_id, q.exercise_no)
 
 
 def image_dict(img: QuestionImage) -> dict:
@@ -61,7 +63,7 @@ async def upload_images(question_id: int, files: list[UploadFile] = File(...),
     q = db.get(Question, question_id)
     if not q:
         raise HTTPException(404, "Question not found")
-    folder = question_folder(q)
+    folder = question_folder(q,db)
     count = db.query(QuestionImage).filter_by(question_id=question_id).count()
     saved, saved_paths = [], []
     try:

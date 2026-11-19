@@ -1,12 +1,4 @@
-"""
-Question image handling for SmartTutor (backend part).
-
-Folder rule:  IMAGE_BASE_PATH / class / subject / chapter / exercise / file
-The DB stores only the RELATIVE path, e.g.  10/maths/ch02/ex_2.1/q5.png
-so changing IMAGE_BASE_PATH never breaks the saved data.
-
-Put this file in app/ (next to your routers folder) and import from it.
-"""
+ 
 import os
 import re
 import shutil
@@ -19,7 +11,7 @@ from PIL import Image
 # Change this one value (or set the environment variable) per machine/server.
 from app.config import settings  # <-- adjust the module name if your Settings class lives elsewhere
 
-IMAGE_BASE_PATH = settings.image_base_path
+IMAGE_BASE_PATH = Path(settings.image_base_path)
 MAX_WIDTH = 800
 ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
