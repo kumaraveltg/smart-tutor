@@ -99,7 +99,8 @@ class QuestionImportRow(BaseModel):
     row: int | None = None
     question_text: str | None = None
     language_translation: str | None = None
-    exercise_no: str | None = None        # add this
+    exercise_no: str | None = None     
+
 
 class QuestionImportRequest(BaseModel):
     chapter_id: int     
@@ -109,6 +110,7 @@ class QuestionImportRequest(BaseModel):
     items: list[QuestionImportRow]
     created_by: str | None = None
     modified_by: str | None = None
+    debug: bool = False
 
  
 
@@ -119,7 +121,8 @@ class QuestionImportError(BaseModel):
 
 class QuestionImportResult(BaseModel):
     created: int
-    errors: list[QuestionImportError] = []
+    updated: int = 0
+    errors: list[dict] = []
 
 class QuestionListOut(QuestionOut):
     display_text: str | None = None      # translated text if it exists, else English

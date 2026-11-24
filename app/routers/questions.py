@@ -46,11 +46,11 @@ def _set_level(db: Session, data: dict) -> None:
 def _commit(db: Session) -> None:
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(
-            422, "Chapter, subchapter, class, subject, medium or parent question was not found"
-        )
+        reason = str(getattr(exc, "orig", exc))
+        logger.error("Commit failed: %s", reason)
+        raise HTTPException(422, f"Database rejected the save: {reason[:300]}")
 
 
 def _clean_exercise(value) -> str | None:
@@ -227,9 +227,10 @@ def import_questions(payload: schemas.QuestionImportRequest, db: Session = Depen
     next_order: dict = {}  # (chapter, exercise) -> last sort_order used in this import
 
     for position, row in enumerate(payload.items, start=2):  # Excel row 1 is the header
+        row_no = row.row or position
         text = (row.question_text or "").strip()
         if not text:
-            errors.append({"row": row.row or position, "reason": "Question is empty"})
+            errors.append({"row": row_no, "reason": "Question is empty"})
             continue
 
         exercise = _clean_exercise(row.exercise_no)
@@ -239,9 +240,9 @@ def import_questions(payload: schemas.QuestionImportRequest, db: Session = Depen
         else:
             next_order[key] = _next_sort_order(db, payload.chapter_id, exercise, None)
 
-        new_question = models.Question(
-            **_only_columns(
-                dict(
+        try:
+            with db.begin_nested():  # savepoint: a bad row is undone, the rest are kept
+                data = dict(
                     exercise_no=exercise,
                     sort_order=next_order[key],
                     class_id=payload.class_id,
@@ -253,19 +254,26 @@ def import_questions(payload: schemas.QuestionImportRequest, db: Session = Depen
                     created_by=who,
                     modified_by=payload.modified_by or who,
                 )
-            )
-        )
-        db.add(new_question)
-        created += 1
+                _set_level(db, data)  # sets level_no, same as create_question
+                new_question = models.Question(**_only_columns(data))
+                db.add(new_question)
+                db.flush()  # sends the INSERT now, so a DB error is caught on this row
 
-        # IMAGES: link the image names from the Excel 'images' column
-        image_cell = getattr(row, "images", None)
-        if image_cell:
-            db.flush()  # gives new_question.question_id
-            folder = folder_from_ids(payload.class_id, payload.subject_id, payload.chapter_id, exercise)
-            for warning in add_imported_images(db, new_question.question_id, folder, image_cell):
-                errors.append({"row": row.row or position, "reason": f"Saved, {warning}"})
-
+                image_cell = getattr(row, "images", None)
+                if image_cell:
+                    folder = folder_from_ids(payload.class_id, payload.subject_id, payload.chapter_id, exercise)
+                    for warning in add_imported_images(db, new_question.question_id, folder, image_cell):
+                        errors.append({"row": row_no, "reason": f"Saved, {warning}"})
+            created += 1
+        except Exception as exc:
+          if payload.debug:
+            logger.exception("Import failed at row %s: %s", row_no, text[:80])
+          errors.append({"row": row_no, "reason": str(getattr(exc, "orig", exc))[:300]})
+    
+    if payload.debug:
+        logger.info("Import chapter=%s rows=%s created=%s failed=%s",
+                    payload.chapter_id, len(payload.items), created, len(errors))
+        
     _commit(db)
     return {"created": created, "errors": errors}
 

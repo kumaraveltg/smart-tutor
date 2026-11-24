@@ -7,7 +7,16 @@ from app.routers import (
     auth, chapter, user_roles, users, lov, questions, answers,
     subchapter, glossary, translate, question_images,student,practice 
 )  
+import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("app_errors.log", encoding="utf-8", delay=True),
+    ],
+)
 
 app = FastAPI(title="SmartTutor API")
 
