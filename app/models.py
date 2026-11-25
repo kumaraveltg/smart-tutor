@@ -43,13 +43,14 @@ class Question(Base):
     medium_id = Column(Integer, ForeignKey("smarttutor.st_lov.lov_id"), nullable=True)
     chapter_id = Column(Integer, ForeignKey("smarttutor.st_chapter.chapter_id"), nullable=True)
     question_text = Column(Text, nullable=False)
-    language_translation = Column(String(255), nullable=True)
+    language_translation = Column(Text, nullable=True)
     created_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     created_on: Mapped[datetime] = mapped_column( DateTime(timezone=True),default=lambda: datetime.now(timezone.utc))
     modified_by: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     modified_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     exercise_no: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    graph_json = Column(JSONB, nullable=True)
     translations = relationship(
     "QuestionTranslation",
     back_populates="question",

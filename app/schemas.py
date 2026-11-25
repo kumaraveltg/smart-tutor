@@ -71,6 +71,7 @@ class QuestionCreate(BaseModel):
     modified_by: str | None = None    
     exercise_no:str | None = None
     sort_order: int | None = None
+    graph_json: dict | None = None
     
 
 
@@ -93,6 +94,7 @@ class QuestionOut(BaseModel):
     modified_on: datetime | None = None
     exercise_no:str | None = None
     sort_order: int | None = None
+    graph_json: dict | None = None
 
 
 class QuestionImportRow(BaseModel):
